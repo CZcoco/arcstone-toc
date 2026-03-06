@@ -1,0 +1,58 @@
+# 敏感配置（绝对不能上传）
+.env
+data/settings.json
+data/settings.default.json
+data/*.db
+data/tmp/
+data/workspace/
+data/thread_id.txt
+
+# 运行时生成的数据库
+src/agent/data/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Claude Code 本地配置
+.claude/settings.local.json
+
+# 构建产物 / 大文件
+frontend/node_modules/
+frontend/dist/
+frontend/release/
+frontend/.npm_cache/
+frontend/resources/python/
+
+# 临时/杂项文件
+bug-when-edit-mem.md
+stata-skill-for-arcstone.zip
+"矿山投资智能体-产品需求文档v1.0.pdf"
+tests/screenshots/
+
+# 构建缓存
+frontend/tsconfig.tsbuildinfo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+nul
+# Logs
+*.log
+# SQLite sidecar files
+*.db-wal
+*.db-shm
+# Python cache
+*.py[cod]
+# Local environment
+.venv/
+venv/
+# If you do not want to commit Claude local files
+.claude/settings.json
+.claude/settings.local.json
+# Optional: ignore this specific PDF
+
+.claude/
+*.pdf

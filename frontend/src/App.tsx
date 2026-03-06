@@ -1,0 +1,290 @@
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
+import { useChat } from "@/hooks/useChat";
+import { createSession, getSessionHistory, uploadPdfs, uploadImage, uploadExcel, setKBRagConfig } from "@/lib/api";
+import Sidebar from "@/components/Sidebar";
+import ChatMessage from "@/components/ChatMessage";
+import ChatInput from "@/components/ChatInput";
+import type { Attachment } from "@/components/ChatInput";
+import ModelSelector from "@/components/ModelSelector";
+import type { KBConfig } from "@/types";
+
+const MemoryPanel = lazy(() => import("@/components/MemoryPanel"));
+const KnowledgeBasePanel = lazy(() => import("@/components/KnowledgeBasePanel"));
+const SystemPromptPanel = lazy(() => import("@/components/SystemPromptPanel"));
+const SkillPanel = lazy(() => import("@/components/SkillPanel"));
+const SettingsPanel = lazy(() => import("@/components/SettingsPanel"));
+const WorkspacePanel = lazy(() => import("@/components/WorkspacePanel"));
+
+const STORAGE_KEY = "econ-agent-model";
+const KB_STORAGE_KEY = "econ-agent-kb-configs";
+
+export default function App() {
+  const [threadId, setThreadId] = useState(() => crypto.randomUUID());
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  const [kbOpen, setKBOpen] = useState(false);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [skillOpen, setSkillOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [model, setModel] = useState(() => localStorage.getItem(STORAGE_KEY) || "claude-sonnet");
+  const { messages, isStreaming, sendMessage, resendMessage, stopStreaming, loadHistory, clearMessages } =
+    useChat(threadId);
+  const [uploadingCount, setUploadingCount] = useState(0);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const userScrolledUpRef = useRef(false);
+
+  // App 启动时，把 localStorage 里的知识库配置同步到后端 RAG
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(KB_STORAGE_KEY);
+      if (raw) {
+        const configs: KBConfig[] = JSON.parse(raw);
+        if (configs.length > 0) {
+          setKBRagConfig(configs).catch(() => {});
+        }
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // 持久化模型选择
+  function handleModelChange(m: string) {
+    setModel(m);
+    localStorage.setItem(STORAGE_KEY, m);
+  }
+
+  // 检测用户是否主动上滚：距底部超过 80px 就认为用户在看历史
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    function onScroll() {
+      const { scrollTop, scrollHeight, clientHeight } = el!;
+      userScrolledUpRef.current = scrollHeight - scrollTop - clientHeight > 80;
+    }
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // 只在用户没有上滚时自动跟随底部
+  useEffect(() => {
+    if (!userScrolledUpRef.current && scrollRef.current) {
+      const el = scrollRef.current;
+      if (isStreaming) {
+        el.scrollTop = el.scrollHeight;
+      } else {
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      }
+    }
+  }, [messages, isStreaming]);
+
+  // 用户发新消息时，重置滚动状态，强制回到底部
+  const handleSend = useCallback(
+    (content: string, msgAttachments?: Attachment[]) => {
+      userScrolledUpRef.current = false;
+      const atts = msgAttachments || [];
+
+      // PDF/DOC/MD 已存入 memories，拼路径提示
+      const pathLines = atts
+        .filter(a => a.type !== "image" && a.type !== "excel")
+        .map(a => `[上传文件] ${a.name}（${a.pages ?? "?"}页），已保存到 ${a.path ?? "/memories/documents/"}`);
+
+      // Excel：告知磁盘路径，agent 用 run_python + pandas 读取
+      const excelLines = atts
+        .filter(a => a.type === "excel" && a.path)
+        .map(a => `[上传Excel] ${a.name}，磁盘路径：${a.path}，可用 run_python + pandas 读取`);
+
+      const fileSummaries = [...pathLines, ...excelLines];
+      const imageIds = atts.filter(a => a.type === "image" && a.image_id).map(a => a.image_id!);
+
+      // 构建附件元信息，用于持久化到 checkpoint（显示文件卡片）
+      const attachmentMetas = atts.map(a => ({ name: a.name, type: a.type, path: a.path }));
+
+      sendMessage(content, model, imageIds, fileSummaries, attachmentMetas);
+      setAttachments([]);
+    },
+    [sendMessage, model]
+  );
+
+  const handleResend = useCallback(
+    (messageId: string, newContent: string) => {
+      userScrolledUpRef.current = false;
+      resendMessage(messageId, newContent, model);
+    },
+    [resendMessage, model]
+  );
+
+  const handleUploadPdfs = useCallback(async (files: File[]) => {
+    const remaining = Math.min(5, 30 - attachments.length);
+    const toUpload = files.slice(0, remaining);
+    if (toUpload.length === 0) return;
+
+    // 按类型分组
+    const pdfFiles = toUpload.filter(f => /\.(pdf|doc|docx|md)$/i.test(f.name));
+    const imageFiles = toUpload.filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f.name));
+    const excelFiles = toUpload.filter(f => /\.(xlsx|xls)$/i.test(f.name));
+
+    setUploadingCount(toUpload.length);
+    try {
+      // PDF/DOC/MD → 现有批量上传端点
+      if (pdfFiles.length > 0) {
+        const { results } = await uploadPdfs(pdfFiles);
+        for (const r of results) {
+          if (r.ok) {
+            const isMd = r.name?.toLowerCase().endsWith(".md");
+            setAttachments(prev => [...prev, {
+              name: r.name,
+              type: isMd ? "md" : (r.name?.toLowerCase().endsWith(".pdf") ? "pdf" : "doc"),
+              pages: r.pages,
+              path: r.path,
+            }]);
+          }
+        }
+      }
+      // 图片 → /upload/image
+      for (const f of imageFiles) {
+        const r = await uploadImage(f);
+        if (r.ok && r.image_id) {
+          setAttachments(prev => [...prev, { name: f.name, type: "image", image_id: r.image_id }]);
+        }
+      }
+      // Excel → /upload/excel（保存到磁盘，返回路径）
+      for (const f of excelFiles) {
+        const r = await uploadExcel(f);
+        if (r.ok && r.path) {
+          setAttachments(prev => [...prev, { name: f.name, type: "excel", path: r.path }]);
+        }
+      }
+    } catch {
+      // 网络错误，静默处理
+    }
+    setUploadingCount(0);
+  }, [attachments.length]);
+
+  const handleRemoveAttachment = useCallback((index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handleNewSession = useCallback(async () => {
+    try {
+      const { thread_id } = await createSession();
+      clearMessages();
+      setThreadId(thread_id as ReturnType<typeof crypto.randomUUID>);
+      setAttachments([]);
+    } catch {
+      clearMessages();
+      setThreadId(crypto.randomUUID());
+      setAttachments([]);
+    }
+  }, [clearMessages]);
+
+  const handleSelectSession = useCallback(
+    async (tid: string) => {
+      if (tid === threadId) return;
+      clearMessages();
+      setThreadId(tid as ReturnType<typeof crypto.randomUUID>);
+      setAttachments([]);
+      try {
+        const { messages: history } = await getSessionHistory(tid);
+        loadHistory(history);
+      } catch {
+        // ignore
+      }
+    },
+    [threadId, clearMessages, loadHistory]
+  );
+
+  const handleDeleteSession = useCallback(
+    (tid: string) => {
+      if (tid === threadId) {
+        clearMessages();
+        setThreadId(crypto.randomUUID());
+      }
+    },
+    [threadId, clearMessages]
+  );
+
+  return (
+    <div className="flex h-screen bg-sand-100">
+      <Sidebar
+        currentThreadId={threadId}
+        onNewSession={handleNewSession}
+        onSelectSession={handleSelectSession}
+        onDeleteSession={handleDeleteSession}
+        onOpenMemory={() => setMemoryOpen(true)}
+        onOpenKB={() => setKBOpen(true)}
+        onOpenSkills={() => setSkillOpen(true)}
+        onOpenSystemPrompt={() => setPromptOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenWorkspace={() => setWorkspaceOpen(true)}
+      />
+
+      {/* Main chat area */}
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Messages */}
+        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full animate-fade-in">
+              <div className="mb-8">
+                <div className="w-12 h-12 relative">
+                  <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M24 6L38 38H10L24 6Z" fill="none" stroke="#c8956c" strokeWidth="1.5" strokeLinejoin="round" />
+                    <path d="M24 16L32 38H16L24 16Z" fill="#c8956c" fillOpacity="0.12" stroke="#c8956c" strokeWidth="1" strokeLinejoin="round" />
+                    <circle cx="24" cy="28" r="2" fill="#c8956c" fillOpacity="0.5" />
+                  </svg>
+                </div>
+              </div>
+              <h1 className="text-lg font-medium text-sand-800 tracking-tight mb-2">
+                econ-agent
+              </h1>
+              <p className="text-sm text-sand-500 max-w-xs text-center leading-relaxed">
+                <span className="text-sand-400">
+                  知识检索 / 网络搜索 / 代码运行 / 持久记忆
+                </span>
+              </p>
+            </div>
+          ) : (
+            <div className="max-w-3xl mx-auto px-6 py-6">
+              {messages.map((msg) => (
+                <ChatMessage
+                  key={msg.id}
+                  message={msg}
+                  onResend={handleResend}
+                  isStreaming={isStreaming}
+                />
+              ))}
+              <div ref={bottomRef} />
+            </div>
+          )}
+        </div>
+
+        {/* Input area */}
+        <ChatInput
+          onSend={handleSend}
+          onStop={stopStreaming}
+          isStreaming={isStreaming}
+          onUploadPdfs={handleUploadPdfs}
+          uploadingCount={uploadingCount}
+          attachments={attachments}
+          onRemoveAttachment={handleRemoveAttachment}
+          modelSelector={
+            <ModelSelector
+              value={model}
+              onChange={handleModelChange}
+              disabled={isStreaming}
+            />
+          }
+        />
+      </main>
+
+      <Suspense>
+        {memoryOpen && <MemoryPanel open={memoryOpen} onClose={() => setMemoryOpen(false)} />}
+        {kbOpen && <KnowledgeBasePanel open={kbOpen} onClose={() => setKBOpen(false)} />}
+        {promptOpen && <SystemPromptPanel open={promptOpen} onClose={() => setPromptOpen(false)} />}
+        {skillOpen && <SkillPanel open={skillOpen} onClose={() => setSkillOpen(false)} />}
+        {settingsOpen && <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
+        {workspaceOpen && <WorkspacePanel open={workspaceOpen} onClose={() => setWorkspaceOpen(false)} />}
+      </Suspense>
+    </div>
+  );
+}
