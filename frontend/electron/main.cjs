@@ -5,6 +5,8 @@ const fs = require("fs");
 const http = require("http");
 
 app.setName("econ-agent");
+const API_HOST = "127.0.0.1";
+const API_PORT = Number(process.env.ECON_AGENT_API_PORT || 18081);
 
 let pyProcess = null;
 let loadingWin = null;
@@ -28,55 +30,17 @@ function getUserDataDir() {
   return app.getPath("userData"); // %APPDATA%/econ-agent
 }
 
-/** 首次启动时确保用户数据目录存在，并从安装目录迁移旧数据 */
+/** Ensure required runtime data directories exist. */
 function ensureDataDir() {
-  const projectRoot = getProjectRoot();
   const userDataDir = getUserDataDir();
   const dataDir = path.join(userDataDir, "data");
   const tmpDir = path.join(dataDir, "tmp");
+  const workspaceDir = path.join(dataDir, "workspace");
+  const skillsDir = path.join(dataDir, "skills");
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-  const envPath = path.join(projectRoot, ".env");
-  if (!fs.existsSync(envPath)) fs.writeFileSync(envPath, "");
-
-  // --- 首次启动：从安装目录 data/ 搬到 %APPDATA%/econ-agent/data/ ---
-  if (app.isPackaged) {
-    const oldDataDir = path.join(projectRoot, "data");
-    const filesToMigrate = ["memories.db", "checkpoints.db", "settings.json", "store.db"];
-    for (const fname of filesToMigrate) {
-      const oldFile = path.join(oldDataDir, fname);
-      const newFile = path.join(dataDir, fname);
-      if (fs.existsSync(oldFile) && !fs.existsSync(newFile)) {
-        try {
-          fs.renameSync(oldFile, newFile);
-        } catch {
-          // 跨盘 rename 失败时用 copy + delete
-          try {
-            fs.copyFileSync(oldFile, newFile);
-            fs.unlinkSync(oldFile);
-          } catch {}
-        }
-      }
-    }
-    // 迁移 skills 目录
-    const oldSkills = path.join(projectRoot, "skills");
-    const newSkills = path.join(dataDir, "skills");
-    if (fs.existsSync(oldSkills) && !fs.existsSync(newSkills)) {
-      try {
-        fs.cpSync(oldSkills, newSkills, { recursive: true });
-        fs.rmSync(oldSkills, { recursive: true, force: true });
-      } catch {}
-    }
-    // 迁移 workspace 目录
-    const oldWorkspace = path.join(oldDataDir, "workspace");
-    const newWorkspace = path.join(dataDir, "workspace");
-    if (fs.existsSync(oldWorkspace) && !fs.existsSync(newWorkspace)) {
-      try {
-        fs.cpSync(oldWorkspace, newWorkspace, { recursive: true });
-        fs.rmSync(oldWorkspace, { recursive: true, force: true });
-      } catch {}
-    }
-  }
+  if (!fs.existsSync(workspaceDir)) fs.mkdirSync(workspaceDir, { recursive: true });
+  if (!fs.existsSync(skillsDir)) fs.mkdirSync(skillsDir, { recursive: true });
 }
 
 function startPython() {
@@ -89,6 +53,7 @@ function startPython() {
       PYTHON_EXECUTABLE: pythonPath,
       PYTHONUTF8: "1",
       ECON_AGENT_USER_DATA: getUserDataDir(),
+      ECON_AGENT_API_PORT: String(API_PORT),
     },
     windowsHide: true,
   });
@@ -116,7 +81,7 @@ function waitForBackend(maxRetries = 60) {
   return new Promise((resolve, reject) => {
     let count = 0;
     const check = () => {
-      http.get("http://127.0.0.1:8000/api/health", (res) => {
+      http.get(`http://${API_HOST}:${API_PORT}/api/health`, (res) => {
         if (res.statusCode === 200) resolve();
         else retry();
       }).on("error", retry);

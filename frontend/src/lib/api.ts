@@ -7,8 +7,10 @@ export interface ModelInfo {
   available: boolean;
 }
 
+const API_PORT = 18081;
+
 export const BASE_URL = window.location.protocol === "file:"
-  ? "http://127.0.0.1:8000/api"
+  ? `http://127.0.0.1:${API_PORT}/api`
   : "/api";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
