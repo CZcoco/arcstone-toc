@@ -1,5 +1,5 @@
 """
-econ-agent 设置管理
+Arcstone-econ 设置管理
 
 用户配置存 data/settings.json（flat key-value，和 env var 同名）。
 启动时：先 load_dotenv() 加载 .env，再从 settings.json 覆盖到 os.environ。
@@ -22,8 +22,9 @@ SETTINGS_SCHEMA = [
             {"key": "DEEPSEEK_API_KEY", "label": "DeepSeek", "sensitive": True},
             {"key": "MOONSHOT_API_KEY", "label": "Kimi (Moonshot)", "sensitive": True},
             {"key": "DASHSCOPE_API_KEY", "label": "通义千问 / 百炼", "sensitive": True},
-            {"key": "ANTHROPIC_API_KEY", "label": "Claude (直连)", "sensitive": True},
-            {"key": "ANTHROPIC_AUTH_TOKEN", "label": "Claude (代理)", "sensitive": True},
+            {"key": "ANTHROPIC_AUTH_TOKEN", "label": "Claude（API额度）", "sensitive": True},
+            {"key": "ANTHROPIC_SUB_TOKEN", "label": "Claude（订阅）", "sensitive": True},
+            {"key": "OPENAI_API_KEY", "label": "GPT-5.4", "sensitive": True},
             {"key": "TAVILY_API_KEY", "label": "Tavily 搜索", "sensitive": True},
             {"key": "MINERU_API_KEY", "label": "MinerU PDF 解析", "sensitive": True},
         ],

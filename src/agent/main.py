@@ -32,7 +32,7 @@ from src.tools.memory_search import memory_search
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-_user_data = os.environ.get("ECON_AGENT_USER_DATA")
+_user_data = os.environ.get("ARCSTONE_ECON_USER_DATA")
 if _user_data:
     DATA_DIR = os.path.join(_user_data, "data")
     SKILLS_DIR = os.path.join(DATA_DIR, "skills")

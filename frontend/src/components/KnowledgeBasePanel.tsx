@@ -9,8 +9,8 @@ import {
   setKBRagConfig,
 } from "@/lib/api";
 
-const KB_STORAGE_KEY = "econ-agent-kb-configs";
-const KB_ACTIVE_KEY = "econ-agent-kb-active";
+const KB_STORAGE_KEY = "arcstone-econ-kb-configs";
+const KB_ACTIVE_KEY = "arcstone-econ-kb-active";
 
 function loadKBConfigs(): KBConfig[] {
   try {

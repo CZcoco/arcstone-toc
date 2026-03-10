@@ -1,5 +1,5 @@
 """
-econ-agent API - FastAPI 应用入口
+Arcstone-econ API - FastAPI 应用入口
 """
 import sys
 import os
@@ -191,7 +191,7 @@ async def lifespan(app: FastAPI):
         store.conn.close()
 
 
-app = FastAPI(title="econ-agent API", lifespan=lifespan)
+app = FastAPI(title="Arcstone-econ API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

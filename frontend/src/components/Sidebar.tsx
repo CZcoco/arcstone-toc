@@ -203,7 +203,7 @@ export default function Sidebar({
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-3">
         <span className="text-[0.8125rem] font-semibold text-sand-700 tracking-tight pl-1">
-          econ-agent
+          Arcstone-econ
         </span>
         <button
           onClick={() => setCollapsed(true)}

@@ -4,9 +4,9 @@ const path = require("path");
 const fs = require("fs");
 const http = require("http");
 
-app.setName("econ-agent");
+app.setName("Arcstone-econ");
 const API_HOST = "127.0.0.1";
-const API_PORT = Number(process.env.ECON_AGENT_API_PORT || 18081);
+const API_PORT = Number(process.env.ARCSTONE_ECON_API_PORT || 18081);
 
 let pyProcess = null;
 let loadingWin = null;
@@ -25,9 +25,9 @@ function getProjectRoot() {
   return path.join(__dirname, "../..");
 }
 
-/** 用户数据目录：%APPDATA%/econ-agent */
+/** 用户数据目录：%APPDATA%/Arcstone-econ */
 function getUserDataDir() {
-  return app.getPath("userData"); // %APPDATA%/econ-agent
+  return app.getPath("userData"); // %APPDATA%/Arcstone-econ
 }
 
 /** Ensure required runtime data directories exist. */
@@ -52,8 +52,8 @@ function startPython() {
       ...process.env,
       PYTHON_EXECUTABLE: pythonPath,
       PYTHONUTF8: "1",
-      ECON_AGENT_USER_DATA: getUserDataDir(),
-      ECON_AGENT_API_PORT: String(API_PORT),
+      ARCSTONE_ECON_USER_DATA: getUserDataDir(),
+      ARCSTONE_ECON_API_PORT: String(API_PORT),
     },
     windowsHide: true,
   });
@@ -116,7 +116,7 @@ function createWindow() {
     height: 800,
     minWidth: 800,
     minHeight: 600,
-    title: "econ-agent",
+    title: "Arcstone-econ",
     show: false,
     backgroundColor: "#f5f3ef",
     webPreferences: {

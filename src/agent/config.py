@@ -6,15 +6,33 @@ from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 
 MODEL_CONFIG = {
-    "claude-sonnet": {
+    "gpt": {
+        "base_url": "https://chat.apiport.cc.cd/v1",
+        "model": "gpt-5.4",
+        "env_key": "OPENAI_API_KEY",
+        "extra_body": {"reasoning_effort": "xhigh", "service_tier": "fast"},
+    },
+    "claude-opus-plan": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-6",
+        "base_url": "https://apiport.cc.cd",
+        "env_key": "ANTHROPIC_SUB_TOKEN",
+    },
+    "claude-sonnet-plan": {
         "provider": "anthropic",
         "model": "claude-sonnet-4-6",
-        "base_url": "https://cc.honoursoft.cn",
-        "env_key": "ANTHROPIC_AUTH_TOKEN",
+        "base_url": "https://apiport.cc.cd",
+        "env_key": "ANTHROPIC_SUB_TOKEN",
     },
     "claude-opus": {
         "provider": "anthropic",
         "model": "claude-opus-4-6",
+        "base_url": "https://cc.honoursoft.cn",
+        "env_key": "ANTHROPIC_AUTH_TOKEN",
+    },
+    "claude-sonnet": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
         "base_url": "https://cc.honoursoft.cn",
         "env_key": "ANTHROPIC_AUTH_TOKEN",
     },
@@ -40,11 +58,8 @@ MODEL_CONFIG = {
     #    "env_key": "DASHSCOPE_API_KEY",
     #    "extra_body": {"enable_thinking": False},
     #},
-    "claude": {
-        "provider": "anthropic",
-        "model": "claude-sonnet-4-20250514",
-        "env_key": "ANTHROPIC_API_KEY",
-    },
+
+
     #"claude-sonnet-1m": {
     #    "provider": "anthropic",
     #    "model": "claude-sonnet-4-6",
@@ -67,7 +82,17 @@ def get_llm(model_name: str = "claude-sonnet"):
         raise ValueError(f"缺少 API Key，请设置环境变量: {config['env_key']}")
 
     if config.get("provider") == "anthropic":
-        kwargs = {"model": config["model"], "api_key": api_key}
+        # anthropic SDK 会自动读 ANTHROPIC_AUTH_TOKEN 环境变量，加上 Authorization: Bearer header。
+        # 当多个 Anthropic 模型用不同 key 时，Bearer token 会串。
+        # 用 default_headers 强制覆盖，确保只用当前模型的 key。
+        kwargs = {
+            "model": config["model"],
+            "api_key": api_key,
+            "default_headers": {
+                "x-api-key": api_key,
+                "Authorization": "",  # 清掉 SDK 自动加的错误 Bearer token
+            },
+        }
         if config.get("base_url"):
             kwargs["base_url"] = config["base_url"]
         if config.get("betas"):

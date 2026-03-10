@@ -1,5 +1,5 @@
 """
-econ-agent API - 路由
+Arcstone-econ API - 路由
 
 所有涉及阻塞 IO（agent.stream / SQLite）的端点用 def（非 async def），
 FastAPI 会自动在线程池中执行，不阻塞事件循环。
@@ -114,6 +114,7 @@ def _update_memory_index(store, file_path: str, summary: str, date: str):
 
 
 router = APIRouter()
+_MAX_BATCH_UPLOAD_FILES = 100
 
 # 图片临时存储：image_id -> base64 data URL（进程内存，用完即弃）
 _image_store: dict[str, str] = {}
@@ -795,9 +796,9 @@ def upload_pdf(request: Request, file: UploadFile = File(...)):
 
 @router.post("/upload/pdfs")
 def upload_pdfs_batch(request: Request, files: list[UploadFile] = File(...)):
-    """批量上传文件（最多 5 个），存入 /memories/documents/。支持 PDF/DOC/DOCX/MD。"""
-    if len(files) > 5:
-        return {"results": [{"ok": False, "name": "", "error": "最多同时上传 5 个文件"}]}
+    """批量上传文件（最多 100 个），存入 /memories/documents/。支持 PDF/DOC/DOCX/MD。"""
+    if len(files) > _MAX_BATCH_UPLOAD_FILES:
+        return {"results": [{"ok": False, "name": "", "error": f"最多同时上传 {_MAX_BATCH_UPLOAD_FILES} 个文件"}]}
 
     store, _ = _get_shared(request)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -1120,7 +1121,8 @@ def settings_update(req: SettingsUpdateRequest, request: Request):
     # API Key 变更 → 清 agent 缓存
     api_key_keys = {
         "DEEPSEEK_API_KEY", "MOONSHOT_API_KEY", "DASHSCOPE_API_KEY",
-        "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "TAVILY_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_SUB_TOKEN", "OPENAI_API_KEY",
+        "TAVILY_API_KEY",
         "MINERU_API_KEY",
     }
     if changed & api_key_keys:

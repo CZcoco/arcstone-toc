@@ -15,8 +15,9 @@ const SkillPanel = lazy(() => import("@/components/SkillPanel"));
 const SettingsPanel = lazy(() => import("@/components/SettingsPanel"));
 const WorkspacePanel = lazy(() => import("@/components/WorkspacePanel"));
 
-const STORAGE_KEY = "econ-agent-model";
-const KB_STORAGE_KEY = "econ-agent-kb-configs";
+const STORAGE_KEY = "arcstone-econ-model";
+const KB_STORAGE_KEY = "arcstone-econ-kb-configs";
+const MAX_ATTACHMENTS = 100;
 
 export default function App() {
   const [threadId, setThreadId] = useState(() => crypto.randomUUID());
@@ -26,7 +27,7 @@ export default function App() {
   const [skillOpen, setSkillOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
-  const [model, setModel] = useState(() => localStorage.getItem(STORAGE_KEY) || "claude-sonnet");
+  const [model, setModel] = useState(() => localStorage.getItem(STORAGE_KEY) || "claude-opus-plan");
   const { messages, isStreaming, sendMessage, resendMessage, stopStreaming, loadHistory, clearMessages } =
     useChat(threadId);
   const [uploadingCount, setUploadingCount] = useState(0);
@@ -115,7 +116,7 @@ export default function App() {
   );
 
   const handleUploadPdfs = useCallback(async (files: File[]) => {
-    const remaining = Math.min(5, 30 - attachments.length);
+    const remaining = Math.min(MAX_ATTACHMENTS, MAX_ATTACHMENTS - attachments.length);
     const toUpload = files.slice(0, remaining);
     if (toUpload.length === 0) return;
 
@@ -235,7 +236,7 @@ export default function App() {
                 </div>
               </div>
               <h1 className="text-lg font-medium text-sand-800 tracking-tight mb-2">
-                econ-agent
+                Arcstone-econ
               </h1>
               <p className="text-sm text-sand-500 max-w-xs text-center leading-relaxed">
                 <span className="text-sand-400">

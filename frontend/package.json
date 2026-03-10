@@ -1,5 +1,5 @@
 {
-  "name": "econ-agent-desktop",
+  "name": "arcstone-econ-desktop",
   "private": true,
   "version": "0.4.1-econ",
   "type": "module",
@@ -37,8 +37,8 @@
     "wait-on": "^8.0.3"
   },
   "build": {
-    "appId": "com.econagent.desktop",
-    "productName": "econ-agent",
+    "appId": "com.arcstone.econ",
+    "productName": "Arcstone-econ",
     "directories": {
       "output": "release"
     },

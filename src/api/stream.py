@@ -1,5 +1,5 @@
 """
-econ-agent API - SSE 流式输出封装
+Arcstone-econ API - SSE 流式输出封装
 
 将 agent.stream() 的事件转换为 SSE 格式的事件生成器。
 

@@ -1,5 +1,5 @@
 """
-econ-agent - 终端运行脚本（流式输出）
+Arcstone-econ - 终端运行脚本（流式输出）
 """
 import sys
 import os
@@ -168,7 +168,7 @@ def main():
     model_name = sys.argv[1] if len(sys.argv) > 1 else "deepseek"
     os.environ["CURRENT_MODEL"] = model_name
 
-    print(f"{BOLD}econ-agent{RESET}")
+    print(f"{BOLD}Arcstone-econ{RESET}")
     print(f"{GRAY}模型: DeepSeek V3.2 ({model_name}) | 输入 exit 退出{RESET}")
     print(f"{GRAY}命令: /new 新会话 | /memory 查看记忆 | /archive 归档对话{RESET}")
     print(f"{GRAY}{'─' * 50}{RESET}")

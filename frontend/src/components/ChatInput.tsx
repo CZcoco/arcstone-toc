@@ -22,8 +22,8 @@ interface ChatInputProps {
   onRemoveAttachment?: (index: number) => void;
 }
 
-const MAX_ATTACHMENTS = 30;
-const MAX_UPLOAD_BATCH = 5;
+const MAX_ATTACHMENTS = 100;
+const MAX_UPLOAD_BATCH = 100;
 
 export default function ChatInput({ onSend, onStop, isStreaming, disabled, modelSelector, onUploadPdfs, uploadingCount = 0, attachments = [], onRemoveAttachment }: ChatInputProps) {
   const [input, setInput] = useState("");
@@ -124,7 +124,7 @@ export default function ChatInput({ onSend, onStop, isStreaming, disabled, model
                        resize-none px-4 pt-3 pb-1 rounded-2xl
                        focus:outline-none text-[0.9375rem] leading-relaxed
                        min-h-[44px] max-h-[180px]"
-            placeholder="给 econ-agent 发消息..."
+            placeholder="给 Arcstone-econ 发消息..."
             rows={1}
             value={input}
             onChange={(e) => setInput(e.target.value)}

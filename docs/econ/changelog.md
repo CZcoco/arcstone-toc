@@ -1,5 +1,12 @@
 # 改动日志
 
+## 2026-03-10：新增 Claude 订阅线路模型 + GPT-5.4 + 清理直连模型
+
+- `src/agent/config.py`：新增 `claude-opus-plan`、`claude-sonnet-plan`（base_url: apiport.cc.cd，ANTHROPIC_AUTH_TOKEN）和 `gpt`（GPT-5.4，OPENAI_API_KEY）；删除 `claude` 直连条目
+- `frontend/src/components/ModelSelector.tsx`：新增 "Claude Opus 4.6 Plan" / "Claude Sonnet 4.6 Plan" / "GPT-5.4" 显示名；删除 "Claude" 直连
+- `src/settings.py`：删除 ANTHROPIC_API_KEY 设置项；"Claude (代理)" 改名为 "Claude（API额度）"；新增 OPENAI_API_KEY 设置项
+- `src/api/routes.py`：api_key_keys 移除 ANTHROPIC_API_KEY，新增 OPENAI_API_KEY
+
 ## 2026-03-05：从矿业智能体改造为经济学论文智能体
 
 ### 背景

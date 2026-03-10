@@ -7,10 +7,11 @@ const MODEL_LABELS: Record<string, string> = {
   deepseek: "DeepSeek V3.2",
   kimi: "Kimi K2.5",
   qwen: "Qwen 3.5",
-  claude: "Claude",
   "claude-opus": "Claude Opus 4.6",
   "claude-sonnet": "Claude Sonnet 4.6",
-  "claude-sonnet-1m": "Claude Sonnet4.6 1M",
+  "claude-opus-plan": "Claude Opus 4.6 Plan",
+  "claude-sonnet-plan": "Claude Sonnet 4.6 Plan",
+  gpt: "GPT-5.4 xhigh fast Plan",
 };
 
 interface ModelSelectorProps {
