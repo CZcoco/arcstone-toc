@@ -118,8 +118,10 @@ async def lifespan(app: FastAPI):
         shutil.copy2(settings_default, settings_target)
 
     skills_default = os.path.join(INSTALL_ROOT, "skills.default")
-    if not os.path.exists(SKILLS_DIR) and os.path.exists(skills_default):
-        shutil.copytree(skills_default, SKILLS_DIR)
+    if os.path.exists(skills_default) and (
+        not os.path.exists(SKILLS_DIR) or not os.listdir(SKILLS_DIR)
+    ):
+        shutil.copytree(skills_default, SKILLS_DIR, dirs_exist_ok=True)
 
     db_path = os.path.join(DATA_DIR, "memories.db")
     checkpoint_path = os.path.join(DATA_DIR, "checkpoints.db")

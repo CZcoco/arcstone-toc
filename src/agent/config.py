@@ -10,7 +10,7 @@ MODEL_CONFIG = {
         "base_url": "https://chat.apiport.cc.cd/v1",
         "model": "gpt-5.4",
         "env_key": "OPENAI_API_KEY",
-        "extra_body": {"reasoning_effort": "xhigh", "service_tier": "fast"},
+        "extra_body": {"reasoning_effort": "xhigh"},
     },
     "claude-opus-plan": {
         "provider": "anthropic",

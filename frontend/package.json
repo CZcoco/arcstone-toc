@@ -1,7 +1,7 @@
 {
   "name": "arcstone-econ-desktop",
   "private": true,
-  "version": "0.4.1-econ",
+  "version": "0.5.5-beta",
   "type": "module",
   "scripts": {
     "dev": "vite",

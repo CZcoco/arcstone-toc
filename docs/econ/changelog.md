@@ -1,5 +1,9 @@
 # 改动日志
 
+## 2026-03-11：修复打包后 skills 未复制到用户数据目录
+
+- `src/api/app.py`：skills.default 复制逻辑改为判断目录是否为空（`not os.listdir()`），解决 Electron 预创建空 `skills/` 目录导致 Python 端跳过复制的 bug。加 `dirs_exist_ok=True` 兼容空目录已存在的情况。
+
 ## 2026-03-10：新增 Claude 订阅线路模型 + GPT-5.4 + 清理直连模型
 
 - `src/agent/config.py`：新增 `claude-opus-plan`、`claude-sonnet-plan`（base_url: apiport.cc.cd，ANTHROPIC_AUTH_TOKEN）和 `gpt`（GPT-5.4，OPENAI_API_KEY）；删除 `claude` 直连条目

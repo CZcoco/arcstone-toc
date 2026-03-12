@@ -11,7 +11,7 @@ const MODEL_LABELS: Record<string, string> = {
   "claude-sonnet": "Claude Sonnet 4.6",
   "claude-opus-plan": "Claude Opus 4.6 Plan",
   "claude-sonnet-plan": "Claude Sonnet 4.6 Plan",
-  gpt: "GPT-5.4 xhigh fast Plan",
+  gpt: "GPT-5.4 xhigh Plan",
 };
 
 interface ModelSelectorProps {

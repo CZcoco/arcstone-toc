@@ -81,8 +81,8 @@ def apply_settings_to_environ(data_dir: str):
         if current:
             _env_backup[key] = current
     for key, value in settings.items():
-        if key in _ALL_KEYS and value:
-            os.environ[key] = value
+        if key in _ALL_KEYS and value.strip():
+            os.environ[key] = value.strip()
 
 
 def mask_value(key: str, value: str) -> str:
@@ -118,6 +118,7 @@ def update_settings(data_dir: str, incoming: dict[str, str]) -> dict:
     for key, value in incoming.items():
         if key not in _ALL_KEYS:
             continue
+        value = value.strip()  # 去掉粘贴时带入的前后空格
         # 用户未修改敏感字段
         if value.startswith("****"):
             continue

@@ -86,7 +86,7 @@ def create_econ_agent(
         subagents=[
             {
                 "name": "topic-agent",
-                "description": "当用户提出一个研究方向/领域后，负责结合可获得的数据和文献，策划出切实可行、难度适中的实证论文选题。调用时机：用户说出研究兴趣后，第一步先调这个 agent 定选题。",
+                "description": "当用户提出一个研究方向/领域和当前研究想法和兴趣后，负责结合可获得的数据（公开和用户提供）和文献，策划出切实可行论文选题。",
                 "system_prompt": TOPIC_AGENT_PROMPT,
                 "tools": [internet_search, fetch_website, bailian_rag, run_python],
             },
