@@ -44,19 +44,39 @@ function ensureDataDir() {
 }
 
 function startPython() {
-  const pythonPath = getPythonPath();
   const projectRoot = getProjectRoot();
-  pyProcess = spawn(pythonPath, ["run_api.py"], {
-    cwd: projectRoot,
-    env: {
-      ...process.env,
-      PYTHON_EXECUTABLE: pythonPath,
-      PYTHONUTF8: "1",
-      ARCSTONE_ECON_USER_DATA: getUserDataDir(),
-      ARCSTONE_ECON_API_PORT: String(API_PORT),
-    },
-    windowsHide: true,
-  });
+
+  if (app.isPackaged) {
+    // 打包模式：启动 backend.exe
+    const backendExe = path.join(process.resourcesPath, "backend", "backend.exe");
+    pyProcess = spawn(backendExe, [], {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        PYTHON_EXECUTABLE: getPythonPath(),
+        PYTHONUTF8: "1",
+        ARCSTONE_ECON_USER_DATA: getUserDataDir(),
+        ARCSTONE_ECON_API_PORT: String(API_PORT),
+        ARCSTONE_ECON_INSTALL_ROOT: projectRoot,
+      },
+      windowsHide: true,
+    });
+  } else {
+    // 开发模式：python.exe run_api.py
+    const pythonPath = getPythonPath();
+    pyProcess = spawn(pythonPath, ["run_api.py"], {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        PYTHON_EXECUTABLE: pythonPath,
+        PYTHONUTF8: "1",
+        ARCSTONE_ECON_USER_DATA: getUserDataDir(),
+        ARCSTONE_ECON_API_PORT: String(API_PORT),
+      },
+      windowsHide: true,
+    });
+  }
+
   pyProcess.stdout.on("data", (d) => console.log("[py]", d.toString()));
   pyProcess.stderr.on("data", (d) => console.error("[py]", d.toString()));
   pyProcess.on("exit", (code) => console.log("[py] exited", code));

@@ -935,7 +935,8 @@ def upload_excel(file: UploadFile = File(...)):
     if not file_bytes:
         return {"ok": False, "error": "文件为空"}
 
-    tmp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "tmp")
+    from src.agent.main import DATA_DIR
+    tmp_dir = os.path.join(DATA_DIR, "tmp")
     os.makedirs(tmp_dir, exist_ok=True)
     safe_name = f"{uuid.uuid4().hex[:8]}_{file.filename}"
     save_path = os.path.normpath(os.path.join(tmp_dir, safe_name))

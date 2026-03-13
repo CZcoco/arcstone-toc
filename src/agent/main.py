@@ -30,7 +30,11 @@ from src.tools.pdf_reader import read_pdf
 from src.tools.read_image import read_image
 from src.tools.memory_search import memory_search
 
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_INSTALL_ROOT_ENV = os.environ.get("ARCSTONE_ECON_INSTALL_ROOT")
+if _INSTALL_ROOT_ENV:
+    _PROJECT_ROOT = _INSTALL_ROOT_ENV
+else:
+    _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 _user_data = os.environ.get("ARCSTONE_ECON_USER_DATA")
 if _user_data:

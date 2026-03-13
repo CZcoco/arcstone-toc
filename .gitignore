@@ -57,3 +57,9 @@ venv/
 .claude/
 *.pdf
 "skills.zip" 
+
+dist/
+build/
+build_backend/
+backend.spec
+skills.zip

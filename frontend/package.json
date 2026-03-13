@@ -51,8 +51,6 @@
         "from": "../",
         "to": "app",
         "filter": [
-          "run_api.py",
-          "src/**/*",
           "data/settings.default.json",
           "requirements.txt"
         ]
@@ -69,6 +67,14 @@
         "to": "python",
         "filter": [
           "**/*"
+        ]
+      },
+      {
+        "from": "../dist/backend",
+        "to": "backend",
+        "filter": [
+          "backend.exe",
+          "_internal/**/*"
         ]
       }
     ],

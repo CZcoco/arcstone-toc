@@ -9,7 +9,11 @@ import logging
 import threading
 from contextlib import asynccontextmanager
 
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_INSTALL_ROOT_ENV = os.environ.get("ARCSTONE_ECON_INSTALL_ROOT")
+if _INSTALL_ROOT_ENV:
+    ROOT_DIR = _INSTALL_ROOT_ENV
+else:
+    ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT_DIR)
 
 from dotenv import load_dotenv

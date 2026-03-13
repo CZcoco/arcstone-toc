@@ -1,5 +1,39 @@
 # 改动日志
 
+## 2026-03-12：PyInstaller 打包 Python 后端为 backend.exe
+
+### 背景
+
+打包后 Python 源码（`src/**/*.py`）以明文暴露在 `resources/app/` 下，用户可直接查看 `config.py` 中的 base_url、API key 映射等敏感配置。用 PyInstaller 把 Python 后端编译成 `backend.exe`，打包后不再携带 `.py` 源码。
+
+### 核心策略
+
+引入 `ARCSTONE_ECON_INSTALL_ROOT` 环境变量，替代所有 `__file__` 计算的安装根目录路径。打包后 `__file__` 指向 `sys._MEIPASS` 临时目录，无法定位真实安装目录。`main.cjs` 在打包模式下设置该变量指向 `resources/app/`，Python 端统一读取。开发模式不设置，fallback 到原来的 `__file__` 逻辑。
+
+### 改动文件
+
+| 文件 | 改动内容 |
+|------|---------|
+| `src/api/app.py` | `ROOT_DIR` 改为优先读 `ARCSTONE_ECON_INSTALL_ROOT` 环境变量，fallback 到 `__file__` 计算 |
+| `src/agent/main.py` | `_PROJECT_ROOT` 同上 |
+| `src/tools/code_runner.py` | `_WORK_DIR` 改为优先读 `ARCSTONE_ECON_USER_DATA` 环境变量拼接 `data/tmp`，fallback 到 `__file__` |
+| `src/api/routes.py:938` | `upload_excel` 的 `tmp_dir` 改为从 `DATA_DIR` 导入，不再用 `__file__` 计算 |
+| `frontend/electron/main.cjs` | `startPython()` 分为打包模式（启动 `backend.exe`，设置 `ARCSTONE_ECON_INSTALL_ROOT`）和开发模式（`python run_api.py`）两个分支 |
+| `frontend/package.json` | `extraResources` 去掉 `run_api.py` 和 `src/**/*`，新增 `dist_backend/` → `backend/` 映射 |
+| `backend.spec`（新建） | PyInstaller `--onedir` 配置，入口 `run_api.py`，含 uvicorn/src 隐式导入 |
+| `build_backend.bat`（新建） | 一键打包脚本 |
+
+### 打包流程
+
+1. `build_backend.bat` → 生成 `dist_backend/backend/backend.exe` + `_internal/`
+2. `cd frontend && npm run electron:build` → electron-builder 自动复制 `dist_backend/backend/` 到 `resources/backend/`
+
+### 影响范围
+
+- 开发模式完全不受影响（所有改动都有 fallback）
+- 打包后 `resources/app/` 不再包含 `.py` 源码
+- 前端无改动
+
 ## 2026-03-11：修复打包后 skills 未复制到用户数据目录
 
 - `src/api/app.py`：skills.default 复制逻辑改为判断目录是否为空（`not os.listdir()`），解决 Electron 预创建空 `skills/` 目录导致 Python 端跳过复制的 bug。加 `dirs_exist_ok=True` 兼容空目录已存在的情况。

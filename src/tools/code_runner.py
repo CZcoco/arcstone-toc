@@ -36,9 +36,13 @@ _MAX_TIMEOUT = 300  # 最大超时限制（5 分钟）
 _MAX_OUTPUT = 10_000  # 最大输出字符数
 
 # 工作目录：data/tmp（上传的 Excel 等文件存放于此）
-_WORK_DIR = os.path.normpath(os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "tmp"
-))
+_user_data = os.environ.get("ARCSTONE_ECON_USER_DATA")
+if _user_data:
+    _WORK_DIR = os.path.normpath(os.path.join(_user_data, "data", "tmp"))
+else:
+    _WORK_DIR = os.path.normpath(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "tmp"
+    ))
 os.makedirs(_WORK_DIR, exist_ok=True)
 
 
