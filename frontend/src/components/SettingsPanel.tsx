@@ -45,16 +45,7 @@ export default function SettingsPanel({ open, onClose, onSaved }: SettingsPanelP
   const hasChanges = JSON.stringify(draft) !== JSON.stringify(values);
 
   function handleChange(key: string, value: string) {
-    setDraft((prev) => {
-      const old = prev[key] ?? "";
-      // 用户在 mask 值上开始输入：丢弃 mask，只保留新输入的字符
-      if (old.startsWith("****")) {
-        // 用户输入的新字符 = value 去掉 old 前缀（浏览器会在 mask 后追加）
-        const typed = value.replace(old, "");
-        return { ...prev, [key]: typed || value };
-      }
-      return { ...prev, [key]: value };
-    });
+    setDraft((prev) => ({ ...prev, [key]: value }));
   }
 
   function toggleVisible(key: string) {

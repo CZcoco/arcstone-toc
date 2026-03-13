@@ -7,10 +7,10 @@ const MODEL_LABELS: Record<string, string> = {
   deepseek: "DeepSeek V3.2",
   kimi: "Kimi K2.5",
   qwen: "Qwen 3.5",
-  "claude-opus": "Claude Opus 4.6",
-  "claude-sonnet": "Claude Sonnet 4.6",
-  "claude-opus-plan": "Claude Opus 4.6 Plan",
-  "claude-sonnet-plan": "Claude Sonnet 4.6 Plan",
+  "claude-opus": "Claude Opus 4.6 API",
+  "claude-sonnet": "Claude Sonnet 4.6 API",
+  "claude-opus-plan": "Claude Opus Plan",
+  "claude-sonnet-plan": "Claude Sonnet Plan",
   gpt: "GPT-5.4 xhigh Plan",
 };
 
@@ -44,22 +44,25 @@ export default function ModelSelector({ value, onChange, disabled, refreshKey }:
 
   const label = MODEL_LABELS[value] || value;
 
-  if (models.length <= 1) return null;
+  // 只隐藏下拉菜单（当只有1个或0个模型时），但始终显示当前模型
+  const showDropdown = models.length > 1;
 
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => !disabled && setOpen(!open)}
-        disabled={disabled}
+        onClick={() => !disabled && showDropdown && setOpen(!open)}
+        disabled={disabled || !showDropdown}
         className="flex items-center gap-1 px-2.5 py-1.5 text-2xs font-medium
                    text-sand-500 hover:text-sand-700 hover:bg-sand-200/50
-                   rounded-lg transition-colors disabled:opacity-40"
+                   rounded-lg transition-colors disabled:opacity-60"
       >
         {label}
-        <ChevronDown size={12} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+        {showDropdown && (
+          <ChevronDown size={12} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+        )}
       </button>
 
-      {open && (
+      {open && showDropdown && (
         <div className="absolute bottom-full left-0 mb-1 min-w-[160px]
                         bg-white rounded-xl shadow-[0_4px_16px_rgba(0,0,0,0.1),0_0_0_1px_rgba(0,0,0,0.04)]
                         py-1 animate-fade-in z-50">

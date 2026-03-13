@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, session } = require("electron");
+const { app, BrowserWindow, dialog, session, Menu } = require("electron");
 const { spawn, execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
@@ -16,7 +16,13 @@ function getPythonPath() {
   if (app.isPackaged) {
     return path.join(process.resourcesPath, "python", "python.exe");
   }
-  return "D:/miniconda/envs/miner-agent/python.exe";
+  // 开发模式：优先使用项目根目录的虚拟环境，其次环境变量，最后系统 PATH
+  const projectRoot = getProjectRoot();
+  const venvPython = path.join(projectRoot, ".venv", "Scripts", "python.exe");
+  if (fs.existsSync(venvPython)) {
+    return venvPython;
+  }
+  return process.env.PYTHON_EXECUTABLE || "python";
 }
 
 function getProjectRoot() {
@@ -177,11 +183,16 @@ function createWindow() {
     title: "Arcstone-econ",
     show: false,
     backgroundColor: "#f5f3ef",
+    autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
     },
   });
+
+  // 隐藏菜单栏（File Edit View Window Help）
+  win.removeMenu();
+  Menu.setApplicationMenu(null);
 
   if (!app.isPackaged) {
     win.loadURL("http://localhost:5173");
