@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog } = require("electron");
+const { app, BrowserWindow, dialog, session } = require("electron");
 const { spawn, execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
@@ -6,10 +6,11 @@ const http = require("http");
 
 app.setName("Arcstone-econ");
 const API_HOST = "127.0.0.1";
-const API_PORT = Number(process.env.ARCSTONE_ECON_API_PORT || 18081);
+const DEFAULT_PORT = Number(process.env.ARCSTONE_ECON_API_PORT || 18081);
 
 let pyProcess = null;
 let loadingWin = null;
+let actualPort = DEFAULT_PORT;
 
 function getPythonPath() {
   if (app.isPackaged) {
@@ -43,43 +44,80 @@ function ensureDataDir() {
   if (!fs.existsSync(skillsDir)) fs.mkdirSync(skillsDir, { recursive: true });
 }
 
-function startPython() {
-  const projectRoot = getProjectRoot();
-
-  if (app.isPackaged) {
-    // 打包模式：启动 backend.exe
-    const backendExe = path.join(process.resourcesPath, "backend", "backend.exe");
-    pyProcess = spawn(backendExe, [], {
-      cwd: projectRoot,
-      env: {
-        ...process.env,
-        PYTHON_EXECUTABLE: getPythonPath(),
-        PYTHONUTF8: "1",
-        ARCSTONE_ECON_USER_DATA: getUserDataDir(),
-        ARCSTONE_ECON_API_PORT: String(API_PORT),
-        ARCSTONE_ECON_INSTALL_ROOT: projectRoot,
-      },
-      windowsHide: true,
-    });
-  } else {
-    // 开发模式：python.exe run_api.py
-    const pythonPath = getPythonPath();
-    pyProcess = spawn(pythonPath, ["run_api.py"], {
-      cwd: projectRoot,
-      env: {
-        ...process.env,
-        PYTHON_EXECUTABLE: pythonPath,
-        PYTHONUTF8: "1",
-        ARCSTONE_ECON_USER_DATA: getUserDataDir(),
-        ARCSTONE_ECON_API_PORT: String(API_PORT),
-      },
-      windowsHide: true,
-    });
+/** 覆盖安装兜底：杀掉可能残留的旧 backend.exe */
+function killOldBackend() {
+  if (!app.isPackaged) return;
+  try {
+    execSync("taskkill /f /im backend.exe", { windowsHide: true, stdio: "ignore" });
+  } catch {
+    // 没有旧进程，正常
   }
+}
 
-  pyProcess.stdout.on("data", (d) => console.log("[py]", d.toString()));
-  pyProcess.stderr.on("data", (d) => console.error("[py]", d.toString()));
-  pyProcess.on("exit", (code) => console.log("[py] exited", code));
+/**
+ * 启动 Python 后端，返回 Promise<number>（实际端口）。
+ * 打包模式传 port=0 让 OS 分配空闲端口；开发模式用固定端口。
+ */
+function startPython() {
+  return new Promise((resolve, reject) => {
+    const projectRoot = getProjectRoot();
+    const envPort = app.isPackaged ? "0" : String(DEFAULT_PORT);
+
+    if (app.isPackaged) {
+      const backendExe = path.join(process.resourcesPath, "backend", "backend.exe");
+      pyProcess = spawn(backendExe, [], {
+        cwd: projectRoot,
+        env: {
+          ...process.env,
+          PYTHON_EXECUTABLE: getPythonPath(),
+          PYTHONUTF8: "1",
+          ARCSTONE_ECON_USER_DATA: getUserDataDir(),
+          ARCSTONE_ECON_API_PORT: envPort,
+          ARCSTONE_ECON_INSTALL_ROOT: projectRoot,
+        },
+        windowsHide: true,
+      });
+    } else {
+      const pythonPath = getPythonPath();
+      pyProcess = spawn(pythonPath, ["run_api.py"], {
+        cwd: projectRoot,
+        env: {
+          ...process.env,
+          PYTHON_EXECUTABLE: pythonPath,
+          PYTHONUTF8: "1",
+          ARCSTONE_ECON_USER_DATA: getUserDataDir(),
+          ARCSTONE_ECON_API_PORT: envPort,
+        },
+        windowsHide: true,
+      });
+    }
+
+    let portResolved = false;
+
+    pyProcess.stdout.on("data", (d) => {
+      const text = d.toString();
+      console.log("[py]", text);
+      if (!portResolved) {
+        const match = text.match(/ARCSTONE_PORT=(\d+)/);
+        if (match) {
+          actualPort = parseInt(match[1], 10);
+          portResolved = true;
+          resolve(actualPort);
+        }
+      }
+    });
+
+    pyProcess.stderr.on("data", (d) => console.error("[py]", d.toString()));
+
+    pyProcess.on("exit", (code) => {
+      console.log("[py] exited", code);
+      if (!portResolved) reject(new Error(`Backend exited (code ${code}) before reporting port`));
+    });
+
+    setTimeout(() => {
+      if (!portResolved) reject(new Error("Timeout waiting for backend port"));
+    }, 30000);
+  });
 }
 
 /** Windows 下杀掉整个进程树，避免残留 */
@@ -101,7 +139,7 @@ function waitForBackend(maxRetries = 60) {
   return new Promise((resolve, reject) => {
     let count = 0;
     const check = () => {
-      http.get(`http://${API_HOST}:${API_PORT}/api/health`, (res) => {
+      http.get(`http://${API_HOST}:${actualPort}/api/health`, (res) => {
         if (res.statusCode === 200) resolve();
         else retry();
       }).on("error", retry);
@@ -148,7 +186,9 @@ function createWindow() {
   if (!app.isPackaged) {
     win.loadURL("http://localhost:5173");
   } else {
-    win.loadFile(path.join(__dirname, "../dist/index.html"));
+    win.loadFile(path.join(__dirname, "../dist/index.html"), {
+      query: { __port: String(actualPort) },
+    });
   }
 
   win.once("ready-to-show", () => {
@@ -158,14 +198,21 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  // 代理绕过：让渲染进程对 localhost 的 fetch/SSE 不走系统代理
+  await session.defaultSession.setProxy({
+    proxyBypassRules: "127.0.0.1,localhost",
+  });
+
   ensureDataDir();
+  killOldBackend();
   createLoadingWindow();
-  startPython();
+
   try {
+    await startPython();
     await waitForBackend(60);
-  } catch {
+  } catch (e) {
     if (loadingWin) { loadingWin.close(); loadingWin = null; }
-    dialog.showErrorBox("启动失败", "后端服务未能启动，请检查 Python 环境是否完整");
+    dialog.showErrorBox("启动失败", `后端服务未能启动：${e.message}`);
     app.quit();
     return;
   }

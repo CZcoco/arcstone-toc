@@ -27,7 +27,8 @@ export default function App() {
   const [skillOpen, setSkillOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
-  const [model, setModel] = useState(() => localStorage.getItem(STORAGE_KEY) || "claude-opus-plan");
+  const [modelRefreshKey, setModelRefreshKey] = useState(0);
+  const [model, setModel] = useState(() => localStorage.getItem(STORAGE_KEY) || "gpt");
   const { messages, isStreaming, sendMessage, resendMessage, stopStreaming, loadHistory, clearMessages } =
     useChat(threadId);
   const [uploadingCount, setUploadingCount] = useState(0);
@@ -273,6 +274,7 @@ export default function App() {
               value={model}
               onChange={handleModelChange}
               disabled={isStreaming}
+              refreshKey={modelRefreshKey}
             />
           }
         />
@@ -283,7 +285,7 @@ export default function App() {
         {kbOpen && <KnowledgeBasePanel open={kbOpen} onClose={() => setKBOpen(false)} />}
         {promptOpen && <SystemPromptPanel open={promptOpen} onClose={() => setPromptOpen(false)} />}
         {skillOpen && <SkillPanel open={skillOpen} onClose={() => setSkillOpen(false)} />}
-        {settingsOpen && <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
+        {settingsOpen && <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} onSaved={() => setModelRefreshKey((k) => k + 1)} />}
         {workspaceOpen && <WorkspacePanel open={workspaceOpen} onClose={() => setWorkspaceOpen(false)} />}
       </Suspense>
     </div>

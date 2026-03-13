@@ -8,9 +8,10 @@ import type { SettingsGroup } from "@/lib/api";
 interface SettingsPanelProps {
   open: boolean;
   onClose: () => void;
+  onSaved?: () => void;
 }
 
-export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
+export default function SettingsPanel({ open, onClose, onSaved }: SettingsPanelProps) {
   const [schema, setSchema] = useState<SettingsGroup[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -72,6 +73,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
       const result = await updateSettings(draft);
       if (result.changed_keys.length > 0) {
         setMessage({ text: "已保存", type: "ok" });
+        onSaved?.();
       } else {
         setMessage({ text: "无变更", type: "ok" });
       }

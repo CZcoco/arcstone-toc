@@ -7,7 +7,14 @@ export interface ModelInfo {
   available: boolean;
 }
 
-const API_PORT = 18081;
+// 打包模式：Electron 通过 query param 注入动态端口；开发模式 fallback 18081
+const API_PORT = (() => {
+  if (window.location.protocol === "file:") {
+    const p = parseInt(new URLSearchParams(window.location.search).get("__port") || "", 10);
+    if (p > 0) return p;
+  }
+  return 18081;
+})();
 
 export const BASE_URL = window.location.protocol === "file:"
   ? `http://127.0.0.1:${API_PORT}/api`

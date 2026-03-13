@@ -18,9 +18,10 @@ interface ModelSelectorProps {
   value: string;
   onChange: (model: string) => void;
   disabled?: boolean;
+  refreshKey?: number;
 }
 
-export default function ModelSelector({ value, onChange, disabled }: ModelSelectorProps) {
+export default function ModelSelector({ value, onChange, disabled, refreshKey }: ModelSelectorProps) {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -29,7 +30,7 @@ export default function ModelSelector({ value, onChange, disabled }: ModelSelect
     listModels()
       .then(({ models }) => setModels(models.filter((m) => m.available)))
       .catch(() => {});
-  }, []);
+  }, [refreshKey]);
 
   // 点击外部关闭
   useEffect(() => {

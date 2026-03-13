@@ -91,6 +91,7 @@ class MemorySearchEngine:
             model=_EMBEDDING_MODEL,
             input=[truncated],
             dimensions=_EMBEDDING_DIMS,
+            timeout=8,
         )
         return np.array(response.data[0].embedding, dtype=np.float32)
 
@@ -263,7 +264,10 @@ class MemorySearchEngine:
     # ------------------------------------------------------------------
 
     def backfill(self) -> int:
-        """索引所有尚未索引的记忆文件。返回索引数量。"""
+        """索引所有尚未索引的记忆文件。返回索引数量。无 API key 时跳过。"""
+        if not os.environ.get("DASHSCOPE_API_KEY"):
+            logger.info("DASHSCOPE_API_KEY not set, skipping backfill")
+            return 0
         ns_json = '["filesystem"]'
         rows = self.conn.execute(
             "SELECT key, value FROM items WHERE namespace = ?",

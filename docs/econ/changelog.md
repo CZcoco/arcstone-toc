@@ -1,5 +1,46 @@
 # 改动日志
 
+## 2026-03-13：生产环境系统性修复（6 项）
+
+详细文档见 [`production-changes.md`](./production-changes.md)
+
+| # | 问题 | 改动文件 | 摘要 |
+|---|------|---------|------|
+| 1 | 系统代理干扰前端连接 | `main.cjs` | `session.defaultSession.setProxy({ proxyBypassRules })` 绕过 localhost 代理 |
+| 2 | 18081 端口冲突 | `run_api.py` + `main.cjs` + `api.ts` | 打包模式 port=0 动态分配，stdout 传端口，query param 注入前端 |
+| 3 | 覆盖安装旧进程残留 | `main.cjs` | `killOldBackend()` 启动前 taskkill |
+| 4 | backfill 阻塞启动超时 | `src/memory_search.py` | 无 DASHSCOPE_API_KEY 时跳过 backfill；embedding 请求加 8s 超时 |
+| 5 | 设置保存后模型列表不刷新 | `App.tsx` + `ModelSelector.tsx` + `SettingsPanel.tsx` | refreshKey 机制，保存后自动重新拉取 |
+| 6 | 默认模型不合理 | `App.tsx` | 默认改为 `gpt`（GPT-5.4 xhigh Plan） |
+
+## 2026-03-13：端口 & 代理问题系统性修复
+
+### 背景
+
+Electron ↔ Python 后端通信存在三个问题：
+1. 用户开系统代理（如 Clash socks4://127.0.0.1:1080），渲染进程的 fetch/SSE 走代理连 localhost，导致"连接中断"
+2. 18081 端口硬编码，被占用时后端启动失败
+3. 覆盖安装后旧进程占端口，新 app 启动失败
+
+### 改动文件
+
+| 文件 | 改动内容 |
+|------|---------|
+| `run_api.py` | `API_PORT=0` 时用 socket 分配空闲端口；启动前打印 `ARCSTONE_PORT=xxxxx` 供 Electron 解析 |
+| `frontend/electron/main.cjs` | ① `session.defaultSession.setProxy({ proxyBypassRules })` 绕过代理 ② `startPython()` 改为 async，打包模式传 `port=0`，从 stdout 解析实际端口 ③ 新增 `killOldBackend()` 启动前杀残留 backend.exe ④ `loadFile` 通过 query param `__port` 注入端口给前端 |
+| `frontend/src/lib/api.ts` | `API_PORT` 从 `window.location.search` 的 `__port` 参数读取，fallback 18081 |
+
+### 端口同步机制
+
+- 打包模式：`main.cjs` 传 `ARCSTONE_ECON_API_PORT=0` → Python 用 socket 拿空闲端口 → 打印 `ARCSTONE_PORT=xxxxx` → Electron 解析存入 `actualPort` → `loadFile` query param `?__port=xxxxx` → 前端 `api.ts` 从 URL 读取
+- 开发模式：固定 18081，行为不变
+
+### 影响范围
+
+- Python 后端业务逻辑不受影响（只改启动脚本）
+- 前端所有 API 调用通过 `BASE_URL` 统一管理，无需逐个修改
+- 开发模式完全不受影响（fallback 18081）
+
 ## 2026-03-12：PyInstaller 打包 Python 后端为 backend.exe
 
 ### 背景
