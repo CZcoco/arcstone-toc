@@ -118,3 +118,7 @@ python tests/test_frontend_ui.py
 - `ModelSelector` 应始终显示当前模型（即使只有一个可用），仅在有多个模型时显示下拉箭头
 - 设置面板保存 API Key 后自动刷新模型列表（通过 `modelRefreshKey` 触发）
 - **Clash TUN 模式兼容**：`run_api.py` 启动时会清理 `HTTP_PROXY`/`HTTPS_PROXY` 环境变量，避免本地连接被代理干扰
+- **生产版设置路径**：安装版优先读取 `%APPDATA%/econ-agent/data/settings.json`；开发环境 fallback 才是仓库内 `./data/settings.json`
+- **Claude API 线路**：`claude-opus` / `claude-sonnet` 使用 `ANTHROPIC_AUTH_TOKEN`，当前走 `https://apicn.ai`，实测 Anthropic 兼容接口可返回 200
+- **GPT 中转结论**：`https://chat.apiport.cc.cd/v1` 对应的 GPT 路线当前存在不稳定现象；`http://106.53.52.4` 及 `/v1` 当前不可用（80 拒绝连接，443 超时）
+- **打包注意**：后端配置变更后必须先重建 `dist/backend/backend.exe`，再执行 `frontend/npm run electron:build`；否则安装包可能仍包含旧后端逻辑
