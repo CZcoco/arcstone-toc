@@ -27,13 +27,15 @@ MODEL_CONFIG = {
     "claude-opus": {
         "provider": "anthropic",
         "model": "claude-opus-4-6",
-        "base_url": "https://cc.honoursoft.cn",
+        # "base_url": "https://cc.honoursoft.cn",
+        "base_url": "https://apicn.ai",
         "env_key": "ANTHROPIC_AUTH_TOKEN",
     },
     "claude-sonnet": {
         "provider": "anthropic",
         "model": "claude-sonnet-4-6",
-        "base_url": "https://cc.honoursoft.cn",
+        # "base_url": "https://cc.honoursoft.cn",
+        "base_url": "https://apicn.ai",
         "env_key": "ANTHROPIC_AUTH_TOKEN",
     },
     "deepseek": {
@@ -91,6 +93,7 @@ def get_llm(model_name: str = "claude-sonnet"):
             "default_headers": {
                 "x-api-key": api_key,
                 "Authorization": "",  # 清掉 SDK 自动加的错误 Bearer token
+                "User-Agent": "curl/8.0",
             },
         }
         if config.get("base_url"):

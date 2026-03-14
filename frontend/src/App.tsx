@@ -51,10 +51,10 @@ export default function App() {
   }, []);
 
   // 持久化模型选择
-  function handleModelChange(m: string) {
+  const handleModelChange = useCallback((m: string) => {
     setModel(m);
     localStorage.setItem(STORAGE_KEY, m);
-  }
+  }, []);
 
   // 检测用户是否主动上滚：距底部超过 80px 就认为用户在看历史
   useEffect(() => {

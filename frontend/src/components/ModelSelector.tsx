@@ -9,8 +9,8 @@ const MODEL_LABELS: Record<string, string> = {
   qwen: "Qwen 3.5",
   "claude-opus": "Claude Opus 4.6 API",
   "claude-sonnet": "Claude Sonnet 4.6 API",
-  "claude-opus-plan": "Claude Opus Plan",
-  "claude-sonnet-plan": "Claude Sonnet Plan",
+  "claude-opus-plan": "Claude Opus 4.6 Plan",
+  "claude-sonnet-plan": "Claude Sonnet 4.6 Plan",
   gpt: "GPT-5.4 xhigh Plan",
 };
 
@@ -31,6 +31,18 @@ export default function ModelSelector({ value, onChange, disabled, refreshKey }:
       .then(({ models }) => setModels(models.filter((m) => m.available)))
       .catch(() => {});
   }, [refreshKey]);
+
+  useEffect(() => {
+    if (models.length === 0) return;
+
+    const availableModelIds = new Set(models.map((model) => model.id));
+    if (availableModelIds.has(value)) return;
+
+    const fallbackModel = models[0]?.id;
+    if (fallbackModel && fallbackModel !== value) {
+      onChange(fallbackModel);
+    }
+  }, [models, value, onChange]);
 
   // 点击外部关闭
   useEffect(() => {
