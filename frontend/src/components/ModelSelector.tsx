@@ -4,15 +4,50 @@ import { listModels, type ModelInfo } from "@/lib/api";
 
 // 模型显示名映射
 const MODEL_LABELS: Record<string, string> = {
-  deepseek: "DeepSeek V3.2",
-  kimi: "Kimi K2.5",
-  qwen: "Qwen 3.5",
   "claude-opus": "Claude Opus 4.6 API",
   "claude-sonnet": "Claude Sonnet 4.6 API",
   "claude-opus-plan": "Claude Opus 4.6 Plan",
   "claude-sonnet-plan": "Claude Sonnet 4.6 Plan",
   gpt: "GPT-5.4 xhigh Plan",
 };
+
+const MODEL_FALLBACKS: Record<string, string[]> = {
+  "claude-opus-plan": ["claude-opus", "claude-sonnet", "gpt", "claude-sonnet-plan"],
+  "claude-sonnet-plan": ["claude-sonnet", "claude-opus", "gpt", "claude-opus-plan"],
+  "claude-opus": ["claude-sonnet", "gpt", "claude-opus-plan", "claude-sonnet-plan"],
+  "claude-sonnet": ["claude-opus", "gpt", "claude-sonnet-plan", "claude-opus-plan"],
+  gpt: ["claude-sonnet", "claude-opus", "claude-sonnet-plan", "claude-opus-plan"],
+};
+
+const MODEL_PRIORITY = [
+  "gpt",
+  "claude-sonnet",
+  "claude-opus",
+  "claude-sonnet-plan",
+  "claude-opus-plan",
+];
+
+function resolveFallbackModel(current: string, availableModels: ModelInfo[]) {
+  const availableIds = new Set(availableModels.map((model) => model.id));
+
+  if (current && availableIds.has(current)) {
+    return current;
+  }
+
+  for (const candidate of MODEL_FALLBACKS[current] || []) {
+    if (availableIds.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  for (const candidate of MODEL_PRIORITY) {
+    if (availableIds.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  return "";
+}
 
 interface ModelSelectorProps {
   value: string;
@@ -27,22 +62,30 @@ export default function ModelSelector({ value, onChange, disabled, refreshKey }:
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     listModels()
-      .then(({ models }) => setModels(models.filter((m) => m.available)))
-      .catch(() => {});
-  }, [refreshKey]);
+      .then(({ models }) => {
+        if (cancelled) return;
 
-  useEffect(() => {
-    if (models.length === 0) return;
+        const availableModels = models.filter((m) => m.available);
+        setModels(availableModels);
 
-    const availableModelIds = new Set(models.map((model) => model.id));
-    if (availableModelIds.has(value)) return;
+        const resolvedModel = resolveFallbackModel(value, availableModels);
+        if (resolvedModel !== value) {
+          onChange(resolvedModel);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setModels([]);
+        }
+      });
 
-    const fallbackModel = models[0]?.id;
-    if (fallbackModel && fallbackModel !== value) {
-      onChange(fallbackModel);
-    }
-  }, [models, value, onChange]);
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey, value, onChange]);
 
   // 点击外部关闭
   useEffect(() => {
@@ -54,7 +97,7 @@ export default function ModelSelector({ value, onChange, disabled, refreshKey }:
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
 
-  const label = MODEL_LABELS[value] || value;
+  const label = value ? (MODEL_LABELS[value] || value) : "未配置模型";
 
   // 只隐藏下拉菜单（当只有1个或0个模型时），但始终显示当前模型
   const showDropdown = models.length > 1;

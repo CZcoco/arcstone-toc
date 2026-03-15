@@ -27,13 +27,20 @@
   - `/workspace/` → 用户工作区目录
 - **流式输出**: 通过 `/api/chat/stream` 提供 SSE 流式响应，事件类型包括：`token`、`tool_start`、`tool_end`、`error`、`complete`
 
+## 仓库与发布
+
+- GitHub 仓库：`https://github.com/CZcoco/econ-agent-build`
+- 当前项目目标：将稳定版本代码整理后推送到该仓库的 `main`
+- 当前可用 GitHub 账号：`Yonder-Solivagant`
+- 已确认：该账号对当前仓库具备操作权限
+
 ## 常用命令
 
 ### 开发
 
 ```bash
 # 终端模式（无前端界面）
-python run.py [MODEL_NAME]  # MODEL_NAME: deepseek, claude-sonnet, kimi, gpt
+python run.py [MODEL_NAME]  # MODEL_NAME: claude-sonnet, claude-opus, gpt
 
 # 仅启动 API 服务
 python run_api.py  # 端口从 ARCSTONE_ECON_API_PORT 读取或自动分配
@@ -60,7 +67,7 @@ build_backend.bat  # 需要 PyInstaller，输出 dist/backend/backend.exe
 cp .env.example .env
 
 # 关键变量：
-# - DEEPSEEK_API_KEY / MOONSHOT_API_KEY / ANTHROPIC_API_KEY
+# - ANTHROPIC_AUTH_TOKEN / ANTHROPIC_SUB_TOKEN / OPENAI_API_KEY
 # - TAVILY_API_KEY（联网搜索）
 # - ALIBABA_CLOUD_ACCESS_KEY_ID + BAILIAN_WORKSPACE_ID（RAG 知识库）
 ```
@@ -90,8 +97,9 @@ cp .env.example .env
 
 从旧版路径的数据迁移在 `src/api/app.py` 的 lifespan 中自动完成。
 
-## 测试
+详细环境边界、非 git 但必须统一的配置，以及 embedded Python / uv / pip 的职责说明见：`用户环境.md`。
 
+## 测试
 ```bash
 # Playwright UI 测试（需要先启动开发服务器）
 python tests/test_frontend_ui.py
@@ -100,10 +108,9 @@ python tests/test_frontend_ui.py
 ## 模型配置
 
 `src/agent/config.py` 中定义的可用模型：
-- `deepseek` (DeepSeek V3.2) - 默认模型
-- `claude-opus`, `claude-sonnet` (Anthropic 通过代理)
+- `claude-sonnet` (默认模型，Anthropic 通过代理)
+- `claude-opus` (Anthropic 通过代理)
 - `claude-opus-plan`, `claude-sonnet-plan` (订阅端点)
-- `kimi` (Moonshot K2.5)
 - `gpt` (GPT-5.4 通过代理)
 
 ## 规则与准则
@@ -121,4 +128,26 @@ python tests/test_frontend_ui.py
 - **生产版设置路径**：安装版优先读取 `%APPDATA%/econ-agent/data/settings.json`；开发环境 fallback 才是仓库内 `./data/settings.json`
 - **Claude API 线路**：`claude-opus` / `claude-sonnet` 使用 `ANTHROPIC_AUTH_TOKEN`，当前走 `https://apicn.ai`，实测 Anthropic 兼容接口可返回 200
 - **GPT 中转结论**：`https://chat.apiport.cc.cd/v1` 对应的 GPT 路线当前存在不稳定现象；`http://106.53.52.4` 及 `/v1` 当前不可用（80 拒绝连接，443 超时）
-- **打包注意**：后端配置变更后必须先重建 `dist/backend/backend.exe`，再执行 `frontend/npm run electron:build`；否则安装包可能仍包含旧后端逻辑
+- **GPT 稳定性兼容**：`gpt` 路线已在 `src/agent/config.py` 显式覆盖 `User-Agent: curl/8.0`，并注入 `timeout=120`、`max_retries=3`，以尽量贴近当前更稳定的 Claude API 调用形态，降低 OpenAI/Python 默认请求头带来的代理兼容问题
+- **最终用户 Python 运行时**：v0.6.x 延续 Python 3.12 embedded runtime 作为产品运行时本体；uv 仅负责向该解释器安装依赖，pip 为 fallback，不采用 uv-managed Python runtime 作为分发方案
+- **首启依赖策略**：`src/api/dependency_installer.py` 将 startup 依赖与 optional 扩展分层；用户首启只安装最小启动集，可选能力缺失时不应阻塞应用启动
+
+## 版本记录
+
+### v0.6.0 (2026-03-15)
+
+- **在线安装版**：安装包从 ~410MB 降至 ~110MB
+- **uv 支持**：优先使用 uv 安装依赖（比 pip 快 10-100 倍），失败自动降级到 pip
+- **阿里云镜像**：默认使用 `https://mirrors.aliyun.com/pypi/simple/` 加速
+- **分阶段安装**：核心依赖必须成功，非核心依赖失败不阻塞启动
+
+### v0.5.12 (2026-03-14)
+
+- **UI 优化**：对话区域响应式宽度调整，小屏幕占满全宽、大屏幕限制最大宽度避免过宽
+- **版本号**：提升至 0.5.12
+
+### v0.5.11 (2026-03-14)
+
+- **模型调整**：移除 DeepSeek 和 Kimi API 支持，默认模型切换为 `claude-sonnet`
+- **Embedded Python 升级**：切换到 Python 3.12.10，完整包含数据科学依赖（pandas、numpy、matplotlib、scipy、statsmodels 等）
+- **安装包**：`Arcstone-econ Setup 0.5.11.exe` (约 410MB)，内置 `resources/python/python.exe` 和 `resources/backend/backend.exe`，用户无需预装 Python

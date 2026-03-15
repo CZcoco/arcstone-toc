@@ -14,52 +14,46 @@ src/agent/data/
 __pycache__/
 *.pyc
 *.pyo
+*.py[cod]
 .pytest_cache/
 
-# Claude Code 本地配置
-.claude/settings.local.json
+# Python 本地环境
+.venv/
+venv/
 
-# 构建产物 / 大文件
+# Claude 本地目录
+.claude/
+
+# 前端构建产物 / 依赖 / 异常残留
 frontend/node_modules/
 frontend/dist/
 frontend/release/
 frontend/.npm_cache/
 frontend/resources/python/
+frontend/frontend/
+frontend/tsconfig.tsbuildinfo
+
+# 根目录构建产物
+dist/
+build/
+build_backend/
+backend.spec
 
 # 临时/杂项文件
 bug-when-edit-mem.md
 stata-skill-for-arcstone.zip
 "矿山投资智能体-产品需求文档v1.0.pdf"
 tests/screenshots/
-
-# 构建缓存
-frontend/tsconfig.tsbuildinfo
+*.log
+*.db-wal
+*.db-shm
 
 # 系统文件
 .DS_Store
 Thumbs.db
 nul
-# Logs
-*.log
-# SQLite sidecar files
-*.db-wal
-*.db-shm
-# Python cache
-*.py[cod]
-# Local environment
-.venv/
-venv/
-# If you do not want to commit Claude local files
-.claude/settings.json
-.claude/settings.local.json
-# Optional: ignore this specific PDF
 
-.claude/
+# 可选忽略的文档/压缩包
 *.pdf
-"skills.zip" 
-
-dist/
-build/
-build_backend/
-backend.spec
+"skills.zip"
 skills.zip

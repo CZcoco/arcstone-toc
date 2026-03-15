@@ -22,9 +22,13 @@ from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from pydantic import BaseModel
 
 from src.api.stream import stream_to_sse, _extract_text
-from src.tools.pdf_parser import parse_pdf, parse_pdfs_batch
 from src.agent.prompts import ECON_SYSTEM_PROMPT
 from src.settings import SETTINGS_SCHEMA, get_settings_for_api, update_settings
+
+
+def _optional_import_error_message(feature: str, error: Exception) -> str:
+    missing_name = getattr(error, "name", "") or "依赖"
+    return f"{feature}功能当前不可用：缺少扩展依赖 {missing_name}。请先完成相关扩展依赖安装。"
 
 _kb_logger = logging.getLogger(__name__ + ".kb")
 
@@ -135,7 +139,7 @@ _SSE_HEADERS = {
 }
 
 
-def _get_agent(request: Request, model: str = "deepseek"):
+def _get_agent(request: Request, model: str = "claude-sonnet"):
     """从 AgentManager 获取指定模型的 agent"""
     return request.app.state.agent_manager.get(model)
 
@@ -156,7 +160,7 @@ class AttachmentMeta(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     thread_id: str
-    model: Optional[str] = "deepseek"
+    model: Optional[str] = "claude-sonnet"
     image_ids: list[str] = []
     file_summaries: list[str] = []
     attachments: list[AttachmentMeta] = []
@@ -166,7 +170,7 @@ class ResendRequest(BaseModel):
     message: str
     thread_id: str
     message_index: int
-    model: Optional[str] = "deepseek"
+    model: Optional[str] = "claude-sonnet"
 
 
 class CancelRequest(BaseModel):
@@ -179,7 +183,7 @@ class SessionNewResponse(BaseModel):
 
 class ArchiveRequest(BaseModel):
     thread_id: str
-    model: Optional[str] = "deepseek"
+    model: Optional[str] = "claude-sonnet"
 
 
 class RenameRequest(BaseModel):
@@ -194,7 +198,20 @@ async def health():
     return {"status": "ok"}
 
 
-# --- Models ---
+@router.get("/install/status")
+def install_status(request: Request):
+    store, _ = _get_shared(request)
+    item = store.get(("settings",), "install_status")
+    if item and isinstance(item.value, dict):
+        return item.value
+    return {
+        "status": "unknown",
+        "verified": False,
+        "installed_stages": [],
+        "skipped_stages": [],
+        "failed_packages": [],
+        "message": "Install status not available yet",
+    }
 
 @router.get("/models")
 def list_models(request: Request):
@@ -219,7 +236,7 @@ def chat_stream(req: ChatRequest, request: Request):
         stream_to_sse(agent, req.message, config,
                       images=images,
                       file_summaries=req.file_summaries,
-                      model=req.model or "deepseek",
+                      model=req.model or "claude-sonnet",
                       attachments=[a.model_dump() for a in req.attachments]),
         media_type="text/event-stream",
         headers=_SSE_HEADERS,
@@ -736,7 +753,13 @@ def upload_pdf(request: Request, file: UploadFile = File(...)):
         return {"ok": False, "error": "文件为空"}
 
     # 解析 PDF
-    result = parse_pdf(file_bytes, file.filename)
+    try:
+        from src.tools.pdf_parser import parse_pdf
+        result = parse_pdf(file_bytes, file.filename)
+    except ImportError as e:
+        return {"ok": False, "error": _optional_import_error_message("文档解析", e)}
+    except Exception as e:
+        return {"ok": False, "error": f"文档解析失败: {e}"}
     content = result["content"]
     warning = result.get("warning", "")
     if not content.strip():
@@ -847,8 +870,20 @@ def upload_pdfs_batch(request: Request, files: list[UploadFile] = File(...)):
     if not pdf_files:
         return {"results": [r for r in results_out if r is not None]}
 
-    # 批量解析 PDF/DOC
-    parse_results = parse_pdfs_batch(pdf_files)
+    try:
+        from src.tools.pdf_parser import parse_pdfs_batch
+        parse_results = parse_pdfs_batch(pdf_files)
+    except ImportError as e:
+        error_msg = _optional_import_error_message("文档解析", e)
+        for idx in valid_indices:
+            filename = files[idx].filename or ""
+            results_out[idx] = {"ok": False, "name": filename, "error": error_msg}
+        return {"results": [r for r in results_out if r is not None]}
+    except Exception as e:
+        for idx in valid_indices:
+            filename = files[idx].filename or ""
+            results_out[idx] = {"ok": False, "name": filename, "error": f"文档解析失败: {e}"}
+        return {"results": [r for r in results_out if r is not None]}
 
     for j, pr in enumerate(parse_results):
         idx = valid_indices[j]
@@ -1121,7 +1156,6 @@ def settings_update(req: SettingsUpdateRequest, request: Request):
 
     # API Key 变更 → 清 agent 缓存
     api_key_keys = {
-        "DEEPSEEK_API_KEY", "MOONSHOT_API_KEY", "DASHSCOPE_API_KEY",
         "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_SUB_TOKEN", "OPENAI_API_KEY",
         "TAVILY_API_KEY",
         "MINERU_API_KEY",

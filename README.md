@@ -54,7 +54,7 @@ create_econ_agent()
 | [skills/literature](./skills/literature) | 文献检索 skill |
 | [skills/data](./skills/data) | 数据获取 skill |
 | [docs/econ/architecture.md](./docs/econ/architecture.md) | 经济学论文版本架构说明 |
-| [docs/refined-development.md](./docs/refined-development.md) | 当前开发速查手册 |
+| [docs/dev/refined-development.md](./docs/dev/refined-development.md) | 当前开发速查手册 |
 
 ## 数据与安装隔离
 

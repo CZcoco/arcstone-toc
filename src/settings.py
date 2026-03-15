@@ -19,9 +19,6 @@ SETTINGS_SCHEMA = [
     {
         "group": "模型 API",
         "keys": [
-            {"key": "DEEPSEEK_API_KEY", "label": "DeepSeek", "sensitive": True},
-            {"key": "MOONSHOT_API_KEY", "label": "Kimi (Moonshot)", "sensitive": True},
-            {"key": "DASHSCOPE_API_KEY", "label": "通义千问 / 百炼", "sensitive": True},
             {"key": "ANTHROPIC_AUTH_TOKEN", "label": "Claude API（API额度）", "sensitive": True},
             {"key": "ANTHROPIC_SUB_TOKEN", "label": "Claude Plan（订阅）", "sensitive": True},
             {"key": "OPENAI_API_KEY", "label": "GPT-5.4", "sensitive": True},

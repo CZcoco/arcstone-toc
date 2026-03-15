@@ -2,7 +2,6 @@
 图片读取工具
 
 读取工作区中的图片文件，调用多模态模型识别内容，返回结构化文字描述。
-不支持视觉的模型（如 DeepSeek）自动降级返回文件元信息。
 """
 import os
 import base64
@@ -39,11 +38,10 @@ def _resolve_path(file_path: str) -> str:
 def _is_vision_unsupported() -> bool:
     """检测当前模型是否不支持图像输入。
 
-    目前仅 DeepSeek 不支持，其他模型（Kimi、Claude 等）均支持。
+    v0.5.11 起所有支持的模型（Claude、GPT）均支持多模态。
     CURRENT_MODEL 由 stream.py 在每次请求时设置。
     """
-    model = os.environ.get("CURRENT_MODEL", "")
-    return model.startswith("deepseek")
+    return False
 
 
 def _describe_image(data_url: str, file_path: str) -> str:
@@ -102,14 +100,14 @@ def read_image(file_path: str) -> str:
 
     size_kb = size / 1024
 
-    # 不支持图像的模型，降级返回文件元信息
+    # 不支持图像的模型，降级返回文件元信息（当前所有模型均支持多模态）
     if _is_vision_unsupported():
         model = os.environ.get("CURRENT_MODEL", "unknown")
         return (
             f"【当前模型（{model}）不支持图像识别，无法查看图片内容】\n"
             f"图片路径：{file_path}\n"
             f"文件大小：{size_kb:.1f}KB\n"
-            f"如需分析图表内容，请切换到支持多模态的模型（如 Claude、Kimi）。"
+            f"如需分析图表内容，请切换到支持多模态的模型（如 Claude、GPT）。"
         )
 
     # 读取图片并转 base64

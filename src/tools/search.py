@@ -4,18 +4,22 @@
 import os
 import threading
 from langchain_core.tools import tool
-from tavily import TavilyClient
 
-_client: TavilyClient | None = None
+_client = None
 _client_lock = threading.Lock()
 
 
-def _get_client() -> TavilyClient:
+def _get_client():
     """线程安全地获取 TavilyClient 单例"""
     global _client
     if _client is None:
         with _client_lock:
             if _client is None:
+                try:
+                    from tavily import TavilyClient
+                except ImportError as e:
+                    raise RuntimeError("缺少 tavily-python 依赖") from e
+
                 api_key = os.environ.get("TAVILY_API_KEY")
                 if not api_key:
                     raise ValueError("缺少 TAVILY_API_KEY")
@@ -62,6 +66,8 @@ def internet_search(query: str, search_depth: str = "advanced") -> str:
 
     except ValueError as e:
         return f"搜索未配置：{e}"
+    except RuntimeError as e:
+        return f"搜索功能不可用：{e}"
     except Exception as e:
         return f"搜索失败: {str(e)}"
 
@@ -111,5 +117,7 @@ def fetch_website(urls: list[str], extract_depth: str = "basic") -> str:
 
     except ValueError as e:
         return f"搜索未配置：{e}"
+    except RuntimeError as e:
+        return f"网页抓取功能不可用：{e}"
     except Exception as e:
         return f"网页抓取失败: {str(e)}"

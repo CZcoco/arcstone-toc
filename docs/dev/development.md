@@ -86,7 +86,7 @@ D:/miner-agent/
 │
 ├── docs/
 │   ├── 01-需求分析.md ~ 09-代码示例.md   # 9 篇架构设计文档
-│   ├── development.md             # 本文档
+│   ├── dev/development.md         # 本文档
 │   └── plans/
 │       └── 2026-02-17-memory-layer-design.md
 │

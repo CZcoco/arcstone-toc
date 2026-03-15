@@ -8,7 +8,7 @@ import type { SettingsGroup } from "@/lib/api";
 interface SettingsPanelProps {
   open: boolean;
   onClose: () => void;
-  onSaved?: () => void;
+  onSaved?: (changedKeys: string[]) => void | Promise<void>;
 }
 
 export default function SettingsPanel({ open, onClose, onSaved }: SettingsPanelProps) {
@@ -64,7 +64,6 @@ export default function SettingsPanel({ open, onClose, onSaved }: SettingsPanelP
       const result = await updateSettings(draft);
       if (result.changed_keys.length > 0) {
         setMessage({ text: "已保存", type: "ok" });
-        onSaved?.();
       } else {
         setMessage({ text: "无变更", type: "ok" });
       }
@@ -73,6 +72,9 @@ export default function SettingsPanel({ open, onClose, onSaved }: SettingsPanelP
       setValues(settingsRes.settings);
       setDraft(settingsRes.settings);
       setVisibleKeys(new Set());
+      if (result.changed_keys.length > 0) {
+        await onSaved?.(result.changed_keys);
+      }
     } catch {
       setMessage({ text: "保存失败", type: "error" });
     }

@@ -67,7 +67,8 @@ def run_python(code: str, timeout: int = 30) -> str:
         - 每次执行独立，变量不跨次保留
         - 默认超时 30 秒，大计算量任务可通过 timeout 参数延长（如 timeout=120）
         - 可用库：numpy, scipy, pandas, matplotlib 等已安装的库
-        - 安装新包：用 subprocess.run([sys.executable, "-m", "pip", "install", "包名"], ...) 而非裸 pip
+        - 安装新包：用 subprocess.run(["uv", "pip", "install", "包名"], ...) 速度最快，或用 subprocess.run([sys.executable, "-m", "pip", "install", "包名"], ...) 作为备选
+        - 国内镜像加速：uv pip install --index-url https://mirrors.aliyun.com/pypi/simple/ 包名
         - 画图请用 plt.savefig
 
     示例：

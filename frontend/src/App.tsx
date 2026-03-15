@@ -53,7 +53,15 @@ export default function App() {
   // 持久化模型选择
   const handleModelChange = useCallback((m: string) => {
     setModel(m);
-    localStorage.setItem(STORAGE_KEY, m);
+    if (m) {
+      localStorage.setItem(STORAGE_KEY, m);
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }, []);
+
+  const handleSettingsSaved = useCallback(async (_changedKeys: string[]) => {
+    setModelRefreshKey((k) => k + 1);
   }, []);
 
   // 检测用户是否主动上滚：距底部超过 80px 就认为用户在看历史
@@ -246,7 +254,7 @@ export default function App() {
               </p>
             </div>
           ) : (
-            <div className="max-w-3xl mx-auto px-6 py-6">
+            <div className="w-full max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
               {messages.map((msg) => (
                 <ChatMessage
                   key={msg.id}
@@ -271,6 +279,7 @@ export default function App() {
           onRemoveAttachment={handleRemoveAttachment}
           modelSelector={
             <ModelSelector
+              key={modelRefreshKey}
               value={model}
               onChange={handleModelChange}
               disabled={isStreaming}
@@ -285,7 +294,7 @@ export default function App() {
         {kbOpen && <KnowledgeBasePanel open={kbOpen} onClose={() => setKBOpen(false)} />}
         {promptOpen && <SystemPromptPanel open={promptOpen} onClose={() => setPromptOpen(false)} />}
         {skillOpen && <SkillPanel open={skillOpen} onClose={() => setSkillOpen(false)} />}
-        {settingsOpen && <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} onSaved={() => setModelRefreshKey((k) => k + 1)} />}
+        {settingsOpen && <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} onSaved={handleSettingsSaved} />}
         {workspaceOpen && <WorkspacePanel open={workspaceOpen} onClose={() => setWorkspaceOpen(false)} />}
       </Suspense>
     </div>

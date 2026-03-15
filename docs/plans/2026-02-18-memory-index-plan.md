@@ -312,11 +312,11 @@ git commit -m "test: verify memory index end-to-end"
 ### Task 5: Update development docs
 
 **Files:**
-- Modify: `docs/development.md` — add memory index section
+- Modify: `docs/dev/development.md` — add memory index section
 
 **Step 1: Add documentation**
 
-Add a section to `docs/development.md` documenting:
+Add a section to `docs/dev/development.md` documenting:
 - Memory index design: index.md format, auto-maintenance by Agent + backend
 - Changed prompt behavior: first-turn reads index + profile + instructions
 - Backend change: upload_pdf auto-updates index
@@ -324,6 +324,6 @@ Add a section to `docs/development.md` documenting:
 **Step 2: Commit**
 
 ```bash
-git add docs/development.md
+git add docs/dev/development.md
 git commit -m "docs: add memory index system documentation"
 ```

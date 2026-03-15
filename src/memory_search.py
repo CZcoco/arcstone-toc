@@ -1,7 +1,8 @@
 """
 MemorySearchEngine — 记忆语义检索引擎
 
-混合搜索：DashScope text-embedding-v3 向量余弦相似度 (70%) + SQLite FTS5 BM25 (30%)
+混合搜索：DashScope text-embedding-v3 向量余弦相似度 (70%) + SQLite FTS5 BM25 (30%)。
+缺少 jieba / numpy / openai 等扩展依赖时，自动降级为不可用状态，不阻塞应用启动。
 共享 SqliteStore 的 sqlite3 连接，新增 embeddings + fts_memory 两张表。
 """
 
@@ -12,11 +13,7 @@ import os
 import sqlite3
 import time
 from datetime import datetime, timezone
-from typing import Optional
-
-import jieba
-import numpy as np
-from openai import OpenAI
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -28,24 +25,69 @@ _EMBEDDING_DIMS = 1024
 _MAX_TEXT_CHARS = 8000  # text-embedding-v3 上限约 8192 token
 
 
-def _jieba_cut(text: str) -> str:
-    """用 jieba 分词，返回空格分隔的字符串，供 FTS5 索引和查询。"""
-    return " ".join(jieba.cut_for_search(text))
-
-
 class MemorySearchEngine:
     """管理记忆文件的向量索引和全文索引，提供混合检索。"""
 
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
-        self._client: Optional[OpenAI] = None
+        self._client = None
+        self._jieba = None
+        self._np = None
+        self._available = False
+        self._missing_dependencies: list[str] = []
+        self._init_optional_dependencies()
         self._setup_tables()
+
+    def _init_optional_dependencies(self):
+        missing: list[str] = []
+
+        try:
+            import jieba  # type: ignore
+            self._jieba = jieba
+        except ImportError:
+            missing.append("jieba")
+
+        try:
+            import numpy as np  # type: ignore
+            self._np = np
+        except ImportError:
+            missing.append("numpy")
+
+        try:
+            from openai import OpenAI  # type: ignore
+            self._openai_cls = OpenAI
+        except ImportError:
+            self._openai_cls = None
+            missing.append("openai")
+
+        self._missing_dependencies = missing
+        self._available = not missing
+        if missing:
+            logger.info("Memory search disabled, missing optional dependencies: %s", ", ".join(missing))
+
+    @property
+    def available(self) -> bool:
+        return self._available
+
+    def status_message(self) -> str:
+        if self.available:
+            return ""
+        if self._missing_dependencies:
+            return f"记忆语义搜索不可用：缺少扩展依赖 {', '.join(self._missing_dependencies)}。"
+        return "记忆语义搜索不可用。"
+
+    def _jieba_cut(self, text: str) -> str:
+        if not self._jieba:
+            return text
+        return " ".join(self._jieba.cut_for_search(text))
 
     # ------------------------------------------------------------------
     # 初始化
     # ------------------------------------------------------------------
 
     def _setup_tables(self):
+        if not self.available:
+            return
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS embeddings (
                 namespace TEXT NOT NULL,
@@ -56,7 +98,6 @@ class MemorySearchEngine:
                 PRIMARY KEY (namespace, key)
             )
         """)
-        # FTS5 virtual table — 不支持 IF NOT EXISTS，需先检查
         row = self.conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='fts_memory'"
         ).fetchone()
@@ -69,12 +110,12 @@ class MemorySearchEngine:
             """)
         self.conn.commit()
 
-    def _get_client(self) -> OpenAI:
+    def _get_client(self):
         if self._client is None:
             api_key = os.environ.get("DASHSCOPE_API_KEY")
             if not api_key:
                 raise ValueError("DASHSCOPE_API_KEY not set")
-            self._client = OpenAI(
+            self._client = self._openai_cls(
                 api_key=api_key,
                 base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             )
@@ -84,7 +125,7 @@ class MemorySearchEngine:
     # Embedding
     # ------------------------------------------------------------------
 
-    def _get_embedding(self, text: str) -> np.ndarray:
+    def _get_embedding(self, text: str):
         client = self._get_client()
         truncated = text[:_MAX_TEXT_CHARS]
         response = client.embeddings.create(
@@ -93,7 +134,7 @@ class MemorySearchEngine:
             dimensions=_EMBEDDING_DIMS,
             timeout=8,
         )
-        return np.array(response.data[0].embedding, dtype=np.float32)
+        return self._np.array(response.data[0].embedding, dtype=self._np.float32)
 
     @staticmethod
     def _text_hash(text: str) -> str:
@@ -105,12 +146,10 @@ class MemorySearchEngine:
 
     def index_memory(self, ns_json: str, key: str, content_text: str, force_fts: bool = False):
         """写入/更新一条记忆的索引。内容没变则跳过 embedding（FTS 可强制刷新）。"""
-        if key in _SKIP_KEYS or not content_text.strip():
+        if not self.available or key in _SKIP_KEYS or not content_text.strip():
             return
 
         text_hash = self._text_hash(content_text)
-
-        # 检查是否需要更新 embedding
         existing = self.conn.execute(
             "SELECT text_hash FROM embeddings WHERE namespace = ? AND key = ?",
             (ns_json, key),
@@ -125,8 +164,6 @@ class MemorySearchEngine:
         try:
             if need_embedding:
                 vec = self._get_embedding(content_text)
-
-                # upsert embedding
                 self.conn.execute("""
                     INSERT INTO embeddings (namespace, key, embedding, text_hash, updated_at)
                     VALUES (?, ?, ?, ?, ?)
@@ -136,25 +173,24 @@ class MemorySearchEngine:
                                  updated_at = excluded.updated_at
                 """, (ns_json, key, vec.tobytes(), text_hash, now))
 
-            # upsert FTS：先删后插
             self.conn.execute(
                 "DELETE FROM fts_memory WHERE namespace = ? AND key = ?",
                 (ns_json, key),
             )
             self.conn.execute(
                 "INSERT INTO fts_memory (namespace, key, content) VALUES (?, ?, ?)",
-                (ns_json, key, _jieba_cut(content_text)),
+                (ns_json, key, self._jieba_cut(content_text)),
             )
 
             self.conn.commit()
-            logger.info("Indexed memory: %s (hash=%s, embedding=%s, fts=True)",
-                        key, text_hash, need_embedding)
-
+            logger.info("Indexed memory: %s (hash=%s, embedding=%s, fts=True)", key, text_hash, need_embedding)
         except Exception:
             logger.exception("Failed to index memory: %s", key)
 
     def delete_memory(self, ns_json: str, key: str):
         """删除一条记忆的索引。"""
+        if not self.available:
+            return
         self.conn.execute(
             "DELETE FROM embeddings WHERE namespace = ? AND key = ?",
             (ns_json, key),
@@ -176,14 +212,13 @@ class MemorySearchEngine:
         top_k: int = 5,
         cosine_weight: float = 0.7,
         bm25_weight: float = 0.3,
-    ) -> list[dict]:
-        """混合检索：cosine 相似度 + BM25。
+    ) -> list[dict[str, Any]]:
+        """混合检索：cosine 相似度 + BM25。"""
+        if not self.available:
+            return []
 
-        返回 [{"key", "score", "cosine", "bm25", "snippet"}, ...]
-        """
-        results_map: dict[str, dict] = {}
+        results_map: dict[str, dict[str, Any]] = {}
 
-        # --- Cosine 相似度 ---
         try:
             query_vec = self._get_embedding(query)
             rows = self.conn.execute(
@@ -193,11 +228,11 @@ class MemorySearchEngine:
 
             if rows:
                 keys = [r[0] for r in rows]
-                vecs = np.array(
-                    [np.frombuffer(r[1], dtype=np.float32) for r in rows]
+                vecs = self._np.array(
+                    [self._np.frombuffer(r[1], dtype=self._np.float32) for r in rows]
                 )
-                query_norm = query_vec / (np.linalg.norm(query_vec) + 1e-10)
-                norms = np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-10
+                query_norm = query_vec / (self._np.linalg.norm(query_vec) + 1e-10)
+                norms = self._np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-10
                 cosine_scores = (vecs / norms) @ query_norm
 
                 for key, score in zip(keys, cosine_scores):
@@ -207,9 +242,8 @@ class MemorySearchEngine:
         except Exception:
             logger.exception("Cosine search failed")
 
-        # --- BM25 via FTS5 ---
         try:
-            terms = list(jieba.cut_for_search(query.strip()))
+            terms = list(self._jieba.cut_for_search(query.strip()))
             terms = [t.strip() for t in terms if t.strip()]
             if terms:
                 fts_query = " OR ".join(f'"{t}"' for t in terms[:10])
@@ -245,7 +279,6 @@ class MemorySearchEngine:
         except Exception:
             logger.exception("BM25 search failed")
 
-        # --- 合并排序 ---
         results = []
         for key, scores in results_map.items():
             hybrid = cosine_weight * scores["cosine"] + bm25_weight * scores["bm25"]
@@ -264,7 +297,10 @@ class MemorySearchEngine:
     # ------------------------------------------------------------------
 
     def backfill(self) -> int:
-        """索引所有尚未索引的记忆文件。返回索引数量。无 API key 时跳过。"""
+        """索引所有尚未索引的记忆文件。无可选依赖或 API key 时跳过。"""
+        if not self.available:
+            logger.info("Memory search disabled, skipping backfill")
+            return 0
         if not os.environ.get("DASHSCOPE_API_KEY"):
             logger.info("DASHSCOPE_API_KEY not set, skipping backfill")
             return 0
@@ -288,15 +324,11 @@ class MemorySearchEngine:
                 if text.strip():
                     self.index_memory(ns_json, key, text, force_fts=True)
                     count += 1
-                    time.sleep(0.2)  # 防 API 限频
+                    time.sleep(0.2)
             except Exception:
                 logger.exception("Failed to backfill: %s", key)
         return count
 
-
-# ------------------------------------------------------------------
-# 全局访问器（供 Agent 工具使用）
-# ------------------------------------------------------------------
 
 _global_engine: Optional[MemorySearchEngine] = None
 

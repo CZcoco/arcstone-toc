@@ -3,6 +3,7 @@ Arcstone-econ API - FastAPI 应用入口
 """
 import sys
 import os
+import json
 import shutil
 import sqlite3
 import logging
@@ -32,6 +33,22 @@ from src.agent.config import MODEL_CONFIG
 from src.store import SqliteStore
 
 
+def _emit_startup_status(event: str, *, title: str, detail: str = "", current: int | None = None, total: int | None = None, status: str = "info", extra: dict[str, object] | None = None):
+    payload: dict[str, object] = {
+        "event": event,
+        "status": status,
+        "title": title,
+        "detail": detail,
+    }
+    if current is not None:
+        payload["current"] = current
+    if total is not None:
+        payload["total"] = total
+    if extra:
+        payload.update(extra)
+    print(f"ARCSTONE_STATUS={json.dumps(payload, ensure_ascii=False)}", flush=True)
+
+
 class AgentManager:
     """按 model_name 缓存 agent 实例，共享 store 和 checkpointer。"""
 
@@ -43,7 +60,7 @@ class AgentManager:
         self._custom_prompt: str | None = None
         self._workspace_dir: str = workspace_dir
 
-    def get(self, model_name: str = "deepseek"):
+    def get(self, model_name: str = "claude-sonnet"):
         with self._lock:
             if model_name not in self._agents:
                 agent, _, _ = create_econ_agent(
@@ -144,6 +161,165 @@ async def lifespan(app: FastAPI):
 
     # settings.json 覆盖 os.environ（在 load_dotenv 之后）
     apply_settings_to_environ(DATA_DIR)
+
+    # --- 首次启动：自动安装 Python 依赖（v0.6.0 在线安装版）---
+    try:
+        from src.api.dependency_installer import DependencyInstaller
+        from langgraph.store.base import PutOp
+
+        target_python = os.environ.get("PYTHON_EXECUTABLE")
+        installer = DependencyInstaller(target_python)
+        _emit_startup_status(
+            "dependency_check",
+            status="info",
+            title="检查启动依赖",
+            detail="正在检查最小启动依赖是否已就绪。",
+            extra={"python": installer.python},
+        )
+        missing_before, probe_error = installer.probe_core_dependencies()
+
+        def report_install_progress(message: str, current: int, total: int):
+            event = "install_progress"
+            status = "info"
+            title = "正在安装启动依赖"
+            detail = message
+            display_current: int | None = None
+            display_total: int | None = None
+
+            if message.startswith("Stage "):
+                title = "准备安装依赖阶段"
+                display_current = current + 1
+                display_total = total
+            elif "uv failed, using pip" in message:
+                event = "install_fallback"
+                status = "warning"
+                title = "uv 安装失败，切换 pip"
+            elif message.endswith(": OK"):
+                status = "success"
+                title = "依赖阶段完成"
+            elif ": FAILED - " in message:
+                status = "error"
+                title = "依赖阶段失败"
+
+            _emit_startup_status(
+                event,
+                status=status,
+                title=title,
+                detail=detail,
+                current=display_current,
+                total=display_total,
+            )
+
+        if missing_before:
+            _emit_startup_status(
+                "install_required",
+                status="warning",
+                title="首次启动需要安装依赖",
+                detail=f"缺少 {len(missing_before)} 项核心依赖，正在联网安装最小启动集。",
+                extra={"missing": missing_before, "python": installer.python},
+            )
+            logging.getLogger(__name__).info(
+                "First launch detected, installing minimum startup dependencies into %s...",
+                installer.python,
+            )
+            result = await installer.install_startup(progress_callback=report_install_progress)
+            _emit_startup_status(
+                "dependency_verify",
+                status="info",
+                title="校验安装结果",
+                detail="正在确认核心依赖是否已就绪。",
+                extra={"verified": result.get("verified", False)},
+            )
+            status = "ok" if result["can_start"] else "failed"
+            store.batch([
+                PutOp(
+                    namespace=("settings",),
+                    key="install_status",
+                    value={
+                        "status": status,
+                        "python": result.get("python"),
+                        "verified": result.get("verified", False),
+                        "missing_before": result.get("missing_before", []),
+                        "missing_after": result.get("missing_after", []),
+                        "failed_packages": [p for p, _ in result["failed"]],
+                        "installed_stages": result.get("installed_stages", []),
+                        "skipped_stages": result.get("skipped_stages", []),
+                        "message": (
+                            "Minimum startup dependencies installed successfully"
+                            if result["can_start"]
+                            else f"Core dependencies failed: {result['critical_failed']}"
+                        ),
+                    }
+                )
+            ])
+            if result["can_start"]:
+                _emit_startup_status(
+                    "install_complete",
+                    status="success",
+                    title="启动依赖已就绪",
+                    detail="最小启动依赖安装完成，正在继续启动后端服务。",
+                    extra={
+                        "installed_stages": result.get("installed_stages", []),
+                        "skipped_stages": result.get("skipped_stages", []),
+                    },
+                )
+                logging.getLogger(__name__).info(
+                    "Startup dependencies installed into %s: %d packages, failed: %d, skipped optional stages: %s",
+                    result.get("python"),
+                    len(result["installed"]),
+                    len(result["failed"]),
+                    result.get("skipped_stages", []),
+                )
+            else:
+                _emit_startup_status(
+                    "install_complete",
+                    status="error",
+                    title="启动依赖安装失败",
+                    detail=f"核心依赖未通过校验：{result['critical_failed']}",
+                    extra={
+                        "missing_after": result.get("missing_after", []),
+                        "critical_failed": result.get("critical_failed", []),
+                    },
+                )
+                logging.getLogger(__name__).error(
+                    "Critical dependencies failed for %s: %s (missing_after=%s)",
+                    result.get("python"),
+                    result["critical_failed"],
+                    result.get("missing_after", []),
+                )
+        else:
+            store.batch([
+                PutOp(
+                    namespace=("settings",),
+                    key="install_status",
+                    value={
+                        "status": "skipped",
+                        "python": installer.python,
+                        "verified": True,
+                        "missing_before": [],
+                        "missing_after": [],
+                        "failed_packages": [],
+                        "installed_stages": [],
+                        "skipped_stages": installer.get_extension_stage_names(),
+                        "message": "Minimum startup dependencies already available",
+                    }
+                )
+            ])
+            _emit_startup_status(
+                "install_skipped",
+                status="success",
+                title="启动依赖已就绪",
+                detail="最小启动依赖已存在，跳过首启安装。",
+                extra={"python": installer.python, "probe_error": probe_error},
+            )
+    except Exception as e:
+        _emit_startup_status(
+            "install_error",
+            status="error",
+            title="依赖检查异常",
+            detail=str(e),
+        )
+        logging.getLogger(__name__).warning("Dependency check skipped: %s", e)
 
     # 读取持久化的工作区路径（没有则用默认值）
     ws_item = store.get(("settings",), "workspace_dir")

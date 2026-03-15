@@ -36,6 +36,8 @@ def memory_search(query: str, top_k: int = 5) -> str:
     engine = get_global_search_engine()
     if engine is None:
         return "记忆搜索引擎未初始化。"
+    if hasattr(engine, "available") and not engine.available:
+        return engine.status_message()
 
     results = engine.search(query=query, top_k=top_k)
 

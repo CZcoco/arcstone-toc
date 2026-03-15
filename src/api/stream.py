@@ -51,7 +51,7 @@ def sse_event(event_type: str, data: dict) -> str:
 def _run_agent(agent, user_input: str, config: dict, q: queue.Queue, detached: threading.Event,
                cancelled: threading.Event,
                images: list[str] | None = None, file_summaries: list[str] | None = None,
-               model: str = "deepseek", attachments: list[dict] | None = None):
+               model: str = "claude-sonnet", attachments: list[dict] | None = None):
     """在独立线程中执行 agent.stream()，将 SSE 事件推入 queue。
 
     cancelled 被 set 后立即停止迭代（用户主动停止）。
@@ -69,16 +69,12 @@ def _run_agent(agent, user_input: str, config: dict, q: queue.Queue, detached: t
     full_text = "\n\n".join(text_parts)
 
     if images:
-        if model.startswith("deepseek"):
-            # DeepSeek 不支持图像识别，加提示后纯文本发送
-            prefix = "【提示：当前模型不支持图像识别，以下回答不包含图片内容分析】\n\n"
-            content = prefix + full_text
-        else:
-            content = []
-            if full_text:
-                content.append({"type": "text", "text": full_text})
-            for data_url in images:
-                content.append({"type": "image_url", "image_url": {"url": data_url}})
+        # Claude 和 GPT 支持图像识别
+        content = []
+        if full_text:
+            content.append({"type": "text", "text": full_text})
+        for data_url in images:
+            content.append({"type": "image_url", "image_url": {"url": data_url}})
     else:
         content = full_text
 
@@ -190,7 +186,7 @@ def cancel_stream(thread_id: str) -> bool:
 def stream_to_sse(agent, user_input: str, config: dict,
                   images: list[str] | None = None,
                   file_summaries: list[str] | None = None,
-                  model: str = "deepseek",
+                  model: str = "claude-sonnet",
                   attachments: list[dict] | None = None) -> Generator[str, None, None]:
     """将 agent.stream() 转换为 SSE 事件流。
 

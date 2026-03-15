@@ -56,7 +56,7 @@ export default function ToolCallCard({ toolCall }: ToolCallCardProps) {
             <div className="text-2xs font-medium text-sand-400 uppercase tracking-wider mb-1.5">
               参数
             </div>
-            <pre className="text-xs text-sand-700 whitespace-pre-wrap bg-sand-50 rounded-lg p-2.5 font-mono leading-relaxed">
+            <pre className="text-xs text-sand-700 whitespace-pre-wrap break-all bg-sand-50 rounded-lg p-2.5 font-mono leading-relaxed">
               {JSON.stringify(toolCall.args, null, 2)}
             </pre>
           </div>
@@ -65,7 +65,7 @@ export default function ToolCallCard({ toolCall }: ToolCallCardProps) {
               <div className="text-2xs font-medium text-sand-400 uppercase tracking-wider mb-1.5">
                 返回结果
               </div>
-              <pre className="text-xs text-sand-700 whitespace-pre-wrap bg-sand-50 rounded-lg p-2.5 font-mono
+              <pre className="text-xs text-sand-700 whitespace-pre-wrap break-all bg-sand-50 rounded-lg p-2.5 font-mono
                               max-h-48 overflow-y-auto leading-relaxed">
                 {toolCall.result.length > 2000
                   ? toolCall.result.slice(0, 2000) + "\n..."

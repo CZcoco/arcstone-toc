@@ -276,7 +276,7 @@ def update_todo(thread_id: str, todos: list[dict]) -> str:
 
 ### Task 4：更新文档
 
-- `docs/development.md`：在架构部分新增"规划层"说明
+- `docs/dev/development.md`：在架构部分新增"规划层"说明
 - `docs/research/agent-planning-research.md`：已完成（调研报告）
 
 ---

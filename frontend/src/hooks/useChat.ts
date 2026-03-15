@@ -285,7 +285,7 @@ export function useChat(threadId: string) {
         {
           message: content,
           thread_id: threadId,
-          model: model || "deepseek",
+          model: model || "claude-sonnet",
           image_ids: imageIds || [],
           file_summaries: fileSummaries || [],
           attachments: attachments || [],

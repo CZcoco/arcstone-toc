@@ -144,7 +144,7 @@ function ChatMessage({ message, onResend, isStreaming: globalStreaming }: ChatMe
               {/* 文本内容 */}
               <div className="bg-white rounded-2xl rounded-br-md px-4 py-3
                               shadow-[0_1px_3px_rgba(0,0,0,0.04)] text-[0.9375rem] leading-relaxed
-                              text-sand-900 whitespace-pre-wrap">
+                              text-sand-900 whitespace-pre-wrap break-words">
                 {message.content}
               </div>
             </div>

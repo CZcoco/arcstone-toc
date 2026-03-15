@@ -223,5 +223,5 @@ memory_search("数字经济 就业")
 ## 改造优先级建议
 
 1. 先统一用户可见身份：README、窗口标题、侧边栏、输入框、终端标题。
-2. 再处理开发文档：`refined-development.md`、对外说明、安装文案。
+2. 再处理开发文档：`docs/dev/refined-development.md`、对外说明、安装文案。
 3. 最后再清理历史文档和示例里的旧品牌名。

@@ -30,6 +30,8 @@ run_python: 代码运行工具。
   - 代码调试通过后，使用 write_file 将最终版本保存到 /workspace/ 以便后续复用
   - 禁止在代码中使用 shell 命令（dir、ls、cat 等），一律用 Python 标准库（os.listdir、open、pathlib 等）
   - 调用 /skills/ 下的脚本时用 subprocess.run([sys.executable, "/skills/..."], capture_output=True, text=True)，不要用 shell=True
+  - 安装新包时优先使用 uv（速度快10倍）：subprocess.run(["uv", "pip", "install", "包名"], check=True)
+  - uv 国内镜像加速：subprocess.run(["uv", "pip", "install", "--index-url", "https://mirrors.aliyun.com/pypi/simple/", "包名"], check=True)
 
 善于组合使用工具，当信息不充分时主动搜索，不要急于给出答案。
 

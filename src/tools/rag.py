@@ -61,10 +61,10 @@ def bailian_rag(query: str) -> str:
     if not configs:
         return "知识库未配置：没有可用的知识库"
 
-    # 懒导入避免循环依赖
-    from src.tools.kb_uploader import BailianKBManager
     try:
         mgr = _get_cached_manager()
+    except RuntimeError as e:
+        return f"知识库功能不可用：{e}"
     except Exception as e:
         return f"知识库连接失败: {e}"
 
@@ -94,6 +94,9 @@ def _get_cached_manager():
     if _cached_manager is None:
         with _manager_lock:
             if _cached_manager is None:
-                from src.tools.kb_uploader import BailianKBManager
+                try:
+                    from src.tools.kb_uploader import BailianKBManager
+                except ImportError as e:
+                    raise RuntimeError("缺少百炼知识库依赖") from e
                 _cached_manager = BailianKBManager()
     return _cached_manager

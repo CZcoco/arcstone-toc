@@ -70,6 +70,8 @@ body {
   font-size: 0.9375rem;
   line-height: 1.75;
   color: var(--color-text);
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 
 .prose > *:first-child {

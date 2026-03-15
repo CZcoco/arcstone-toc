@@ -50,7 +50,7 @@ DEFAULT_CHECKPOINT_PATH = os.path.join(DATA_DIR, "checkpoints.db")
 
 
 def create_econ_agent(
-    model_name: str = "deepseek",
+    model_name: str = "claude-sonnet",
     db_path: str = DEFAULT_DB_PATH,
     checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
     store=None,
