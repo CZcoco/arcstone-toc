@@ -152,15 +152,23 @@ async def lifespan(app: FastAPI):
     checkpoint_conn = sqlite3.connect(checkpoint_path, check_same_thread=False)
     checkpointer = SqliteSaver(checkpoint_conn)
 
-    # 注册语义检索引擎（供 Agent 工具全局访问）+ 索引已有记忆
+    # 注册语义检索引擎（供 Agent 工具全局访问）
     from src.memory_search import set_global_search_engine
     set_global_search_engine(store.search_engine)
-    indexed = store.search_engine.backfill()
-    if indexed:
-        logging.getLogger(__name__).info("Backfilled %d memory files into search index", indexed)
 
-    # settings.json 覆盖 os.environ（在 load_dotenv 之后）
+    # settings.json 覆盖 os.environ（在 load_dotenv 之后，backfill 之前，确保 DASHSCOPE_API_KEY 可用）
     apply_settings_to_environ(DATA_DIR)
+
+    # 后台线程索引已有记忆，不阻塞启动
+    def _backfill_in_background():
+        try:
+            indexed = store.search_engine.backfill()
+            if indexed:
+                logging.getLogger(__name__).info("Backfilled %d memory files into search index", indexed)
+        except Exception:
+            logging.getLogger(__name__).exception("Background backfill failed")
+
+    threading.Thread(target=_backfill_in_background, daemon=True).start()
 
     # --- 首次启动：自动安装 Python 依赖（v0.6.0 在线安装版）---
     try:

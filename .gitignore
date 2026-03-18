@@ -1,7 +1,6 @@
 # 敏感配置（绝对不能上传）
 .env
 data/settings.json
-data/settings.default.json
 data/*.db
 data/tmp/
 data/workspace/

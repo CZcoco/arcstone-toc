@@ -1,5 +1,5 @@
-import { useState, type KeyboardEvent, type ReactNode, useRef, useEffect } from "react";
-import { ArrowUp, Square, Paperclip, Loader2, FileText, Image, X } from "lucide-react";
+import { useState, useCallback, type KeyboardEvent, type ReactNode, useRef, useEffect } from "react";
+import { ArrowUp, Square, Paperclip, Loader2, FileText, Image, X, Upload } from "lucide-react";
 
 export interface Attachment {
   name: string;
@@ -27,8 +27,10 @@ const MAX_UPLOAD_BATCH = 100;
 
 export default function ChatInput({ onSend, onStop, isStreaming, disabled, modelSelector, onUploadPdfs, uploadingCount = 0, attachments = [], onRemoveAttachment }: ChatInputProps) {
   const [input, setInput] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragCountRef = useRef(0);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -42,6 +44,61 @@ export default function ChatInput({ onSend, onStop, isStreaming, disabled, model
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
+
+  // --- Shared file dispatch ---
+  const dispatchFiles = useCallback((files: File[]) => {
+    if (!onUploadPdfs || files.length === 0) return;
+    const remaining = Math.min(MAX_UPLOAD_BATCH, MAX_ATTACHMENTS - attachments.length);
+    if (remaining <= 0) return;
+    onUploadPdfs(files.slice(0, remaining));
+  }, [onUploadPdfs, attachments.length]);
+
+  // --- Paste: images from clipboard ---
+  function handlePaste(e: React.ClipboardEvent) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const files: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === "file") {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    if (files.length > 0) {
+      e.preventDefault();
+      dispatchFiles(files);
+    }
+  }
+
+  // --- Drag and drop ---
+  function handleDragEnter(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCountRef.current++;
+    if (dragCountRef.current === 1) setIsDragging(true);
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCountRef.current--;
+    if (dragCountRef.current === 0) setIsDragging(false);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCountRef.current = 0;
+    setIsDragging(false);
+    const files = Array.from(e.dataTransfer.files);
+    dispatchFiles(files);
+  }
 
   function handleSend() {
     const text = input.trim();
@@ -60,11 +117,8 @@ export default function ChatInput({ onSend, onStop, isStreaming, disabled, model
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const fileList = e.target.files;
-    if (!fileList || fileList.length === 0 || !onUploadPdfs) return;
-    const remaining = Math.min(MAX_UPLOAD_BATCH, MAX_ATTACHMENTS - attachments.length);
-    if (remaining <= 0) return;
-    const selected = Array.from(fileList).slice(0, remaining);
-    onUploadPdfs(selected);
+    if (!fileList || fileList.length === 0) return;
+    dispatchFiles(Array.from(fileList));
     e.target.value = "";
   }
 
@@ -75,8 +129,17 @@ export default function ChatInput({ onSend, onStop, isStreaming, disabled, model
   return (
     <div className="px-6 pb-3 pt-1.5 shrink-0">
       <div className="max-w-3xl mx-auto">
-        <div className="relative bg-white rounded-2xl shadow-[0_1px_6px_rgba(0,0,0,0.06),0_0_0_1px_rgba(0,0,0,0.03)]
-                        transition-shadow duration-200 focus-within:shadow-[0_2px_12px_rgba(0,0,0,0.08),0_0_0_1px_rgba(200,149,108,0.3)]">
+        <div
+          className={`relative bg-white rounded-2xl transition-shadow duration-200
+                      ${isDragging
+                        ? "shadow-[0_2px_12px_rgba(0,0,0,0.08),0_0_0_2px_rgba(200,149,108,0.5)]"
+                        : "shadow-[0_1px_6px_rgba(0,0,0,0.06),0_0_0_1px_rgba(0,0,0,0.03)] focus-within:shadow-[0_2px_12px_rgba(0,0,0,0.08),0_0_0_1px_rgba(200,149,108,0.3)]"
+                      }`}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
           {/* Attachment chips + uploading indicators */}
           {(attachments.length > 0 || isUploading) && (
             <div className="flex flex-wrap gap-1.5 px-3.5 pt-3 pb-0">
@@ -118,6 +181,18 @@ export default function ChatInput({ onSend, onStop, isStreaming, disabled, model
             </div>
           )}
 
+          {/* Drag overlay */}
+          {isDragging && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center
+                            bg-white/80 rounded-2xl border-2 border-dashed border-sand-300
+                            pointer-events-none animate-fade-in">
+              <div className="flex items-center gap-2 text-sand-500 text-sm font-medium">
+                <Upload size={18} />
+                <span>松开以上传文件</span>
+              </div>
+            </div>
+          )}
+
           <textarea
             ref={textareaRef}
             className="w-full bg-transparent text-sand-900 placeholder-sand-400
@@ -129,6 +204,7 @@ export default function ChatInput({ onSend, onStop, isStreaming, disabled, model
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             disabled={disabled}
           />
 

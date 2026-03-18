@@ -33,7 +33,6 @@
   }
 
   .container {
-    width: min(86vw, 360px);
     text-align: center;
     position: relative;
     z-index: 1;
@@ -41,9 +40,9 @@
   }
 
   .icon {
-    width: 74px;
-    height: 74px;
-    margin: 0 auto 28px;
+    width: 12vh;
+    height: 12vh;
+    margin: 0 auto 5vh;
     position: relative;
     animation: fade-up 0.6s ease-out 0.1s both;
   }
@@ -64,78 +63,47 @@
     border-radius: 4%;
   }
 
-  .brand {
-    font-size: 34px;
+  .title {
+    font-size: 6.5vh;
     font-weight: 700;
-    letter-spacing: 0.28em;
+    letter-spacing: 0.3em;
     color: #2c2a26;
-    margin-bottom: 12px;
+    margin-bottom: 1vh;
     animation: fade-up 0.6s ease-out 0.2s both;
   }
 
   .divider {
-    width: 84px;
+    width: 15%;
     height: 2px;
     background: linear-gradient(90deg, transparent, #c8956c, transparent);
-    margin: 0 auto 22px;
+    margin: 2.5vh auto;
     animation: fade-up 0.6s ease-out 0.3s both;
   }
 
-  .status-title {
-    font-size: 20px;
-    line-height: 1.35;
-    font-weight: 600;
-    color: #2c2a26;
-    min-height: 28px;
-    animation: fade-up 0.6s ease-out 0.35s both;
-  }
-
-  .status-detail {
-    font-size: 14px;
-    line-height: 1.65;
+  .subtitle {
+    font-size: 3vh;
     font-weight: 400;
     color: #8a8478;
-    margin-top: 10px;
-    min-height: 46px;
-    white-space: pre-wrap;
+    letter-spacing: 0.05em;
     animation: fade-up 0.6s ease-out 0.4s both;
-  }
-
-  .status-meta {
-    margin-top: 14px;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #b28360;
-    min-height: 16px;
-    animation: fade-up 0.6s ease-out 0.45s both;
   }
 
   .dots {
     display: flex;
-    gap: 10px;
+    gap: 1.5vh;
     justify-content: center;
-    margin-top: 24px;
+    margin-top: 5vh;
     animation: fade-up 0.6s ease-out 0.5s both;
   }
   .dot {
-    width: 10px;
-    height: 10px;
+    width: 1.5vh;
+    height: 1.5vh;
     border-radius: 50%;
     background: #c8956c;
     animation: pulse 1.4s ease-in-out infinite;
   }
   .dot:nth-child(2) { animation-delay: 0.2s; }
   .dot:nth-child(3) { animation-delay: 0.4s; }
-
-  body[data-status="success"] .status-meta {
-    color: #4f8a61;
-  }
-
-  body[data-status="error"] .status-meta {
-    color: #c45d4b;
-  }
 
   @keyframes fade-up {
     from { opacity: 0; transform: translateY(10px); }
@@ -148,43 +116,17 @@
   }
 </style>
 </head>
-<body data-status="info">
+<body>
   <div class="container">
     <div class="icon"></div>
-    <div class="brand">ARCSTONE</div>
+    <div class="title">ARCSTONE</div>
     <div class="divider"></div>
-    <div class="status-title" id="status-title">正在启动 econ-agent</div>
-    <div class="status-detail" id="status-detail">首次启动可能需要联网安装最小依赖。</div>
-    <div class="status-meta" id="status-meta">准备中</div>
+    <div class="subtitle">正在启动，请稍候</div>
     <div class="dots">
       <div class="dot"></div>
       <div class="dot"></div>
       <div class="dot"></div>
     </div>
   </div>
-
-  <script>
-    const titleEl = document.getElementById('status-title');
-    const detailEl = document.getElementById('status-detail');
-    const metaEl = document.getElementById('status-meta');
-
-    function formatMeta(payload) {
-      if (typeof payload.current === 'number' && typeof payload.total === 'number' && payload.total > 0) {
-        return `阶段 ${payload.current} / ${payload.total}`;
-      }
-      if (payload.status === 'success') return '已完成';
-      if (payload.status === 'error') return '需要处理';
-      if (payload.status === 'warning') return '处理中';
-      return '准备中';
-    }
-
-    window.__updateLoadingStatus = function updateLoadingStatus(payload) {
-      if (!payload || typeof payload !== 'object') return;
-      titleEl.textContent = payload.title || '正在启动 econ-agent';
-      detailEl.textContent = payload.detail || '首次启动可能需要联网安装最小依赖。';
-      metaEl.textContent = formatMeta(payload);
-      document.body.dataset.status = payload.status || 'info';
-    };
-  </script>
 </body>
 </html>

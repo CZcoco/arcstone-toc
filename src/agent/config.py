@@ -191,6 +191,25 @@ MODEL_CONFIG: dict[str, ModelConfigEntry] = {
         "base_url": "https://apicn.ai",
         "env_key": "ANTHROPIC_AUTH_TOKEN",
     },
+    "claude-opus-hon": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-6",
+        "base_url": "https://cc.honoursoft.cn",
+        "env_key": "ANTHROPIC_HON_TOKEN",
+    },
+    "claude-sonnet-hon": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "base_url": "https://cc.honoursoft.cn",
+        "env_key": "ANTHROPIC_HON_TOKEN",
+    },
+    "deepseek": {
+        "base_url": "https://www.autodl.art/api/v1",
+        "model": "DeepSeek-V3.2",
+        "env_key": "MODEL_API_KEY",
+        "max_input_tokens": 131072,
+        "frequency_penalty": 0.3,
+    },
     #"qwen": {
     #    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     #    "model": "qwen3.5-plus",

@@ -394,6 +394,12 @@ export function pickWorkspaceFolder() {
   });
 }
 
+export function revealSkillsFolder() {
+  return request<{ ok: boolean }>(`${BASE_URL}/skills/reveal`, {
+    method: "POST",
+  });
+}
+
 export function revealInExplorer(path?: string) {
   return request<{ ok: boolean }>(`${BASE_URL}/workspace/reveal`, {
     method: "POST",

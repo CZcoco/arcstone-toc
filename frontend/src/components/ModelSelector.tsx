@@ -6,25 +6,34 @@ import { listModels, type ModelInfo } from "@/lib/api";
 const MODEL_LABELS: Record<string, string> = {
   "claude-opus": "Claude Opus 4.6 API",
   "claude-sonnet": "Claude Sonnet 4.6 API",
+  "claude-opus-hon": "Claude Opus 4.6 API2",
+  "claude-sonnet-hon": "Claude Sonnet 4.6 API2",
   "claude-opus-plan": "Claude Opus 4.6 Plan",
   "claude-sonnet-plan": "Claude Sonnet 4.6 Plan",
   gpt: "GPT-5.4 xhigh Plan",
+  deepseek: "应急模型",
 };
 
 const MODEL_FALLBACKS: Record<string, string[]> = {
-  "claude-opus-plan": ["claude-opus", "claude-sonnet", "gpt", "claude-sonnet-plan"],
-  "claude-sonnet-plan": ["claude-sonnet", "claude-opus", "gpt", "claude-opus-plan"],
-  "claude-opus": ["claude-sonnet", "gpt", "claude-opus-plan", "claude-sonnet-plan"],
-  "claude-sonnet": ["claude-opus", "gpt", "claude-sonnet-plan", "claude-opus-plan"],
-  gpt: ["claude-sonnet", "claude-opus", "claude-sonnet-plan", "claude-opus-plan"],
+  "claude-opus-plan": ["claude-opus", "claude-opus-hon", "claude-sonnet", "claude-sonnet-hon", "gpt", "claude-sonnet-plan", "deepseek"],
+  "claude-sonnet-plan": ["claude-sonnet", "claude-sonnet-hon", "claude-opus", "claude-opus-hon", "gpt", "claude-opus-plan", "deepseek"],
+  "claude-opus": ["claude-opus-hon", "claude-sonnet", "claude-sonnet-hon", "gpt", "claude-opus-plan", "claude-sonnet-plan", "deepseek"],
+  "claude-sonnet": ["claude-sonnet-hon", "claude-opus", "claude-opus-hon", "gpt", "claude-sonnet-plan", "claude-opus-plan", "deepseek"],
+  "claude-opus-hon": ["claude-opus", "claude-sonnet-hon", "claude-sonnet", "gpt", "claude-opus-plan", "claude-sonnet-plan", "deepseek"],
+  "claude-sonnet-hon": ["claude-sonnet", "claude-opus-hon", "claude-opus", "gpt", "claude-sonnet-plan", "claude-opus-plan", "deepseek"],
+  gpt: ["claude-sonnet", "claude-sonnet-hon", "claude-opus", "claude-opus-hon", "claude-sonnet-plan", "claude-opus-plan", "deepseek"],
+  deepseek: ["gpt", "claude-sonnet", "claude-sonnet-hon", "claude-opus", "claude-opus-hon", "claude-sonnet-plan", "claude-opus-plan"],
 };
 
 const MODEL_PRIORITY = [
   "gpt",
   "claude-sonnet",
+  "claude-sonnet-hon",
   "claude-opus",
+  "claude-opus-hon",
   "claude-sonnet-plan",
   "claude-opus-plan",
+  "deepseek",
 ];
 
 function resolveFallbackModel(current: string, availableModels: ModelInfo[]) {
@@ -118,9 +127,9 @@ export default function ModelSelector({ value, onChange, disabled, refreshKey }:
       </button>
 
       {open && showDropdown && (
-        <div className="absolute bottom-full left-0 mb-1 min-w-[160px]
+        <div className="absolute bottom-full left-0 mb-1 min-w-[170px]
                         bg-white rounded-xl shadow-[0_4px_16px_rgba(0,0,0,0.1),0_0_0_1px_rgba(0,0,0,0.04)]
-                        py-1 animate-fade-in z-50">
+                        py-1 animate-fade-in z-50 whitespace-nowrap">
           {models.map((m) => (
             <button
               key={m.id}

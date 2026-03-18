@@ -69,12 +69,16 @@ def _run_agent(agent, user_input: str, config: dict, q: queue.Queue, detached: t
     full_text = "\n\n".join(text_parts)
 
     if images:
-        # Claude 和 GPT 支持图像识别
-        content = []
-        if full_text:
-            content.append({"type": "text", "text": full_text})
-        for data_url in images:
-            content.append({"type": "image_url", "image_url": {"url": data_url}})
+        if model.startswith("deepseek"):
+            # DeepSeek 不支持图像，降级为纯文本
+            content = "【提示：当前模型不支持图像识别，以下回答不包含图片内容分析】\n\n" + full_text
+        else:
+            # Claude 和 GPT 支持图像识别
+            content = []
+            if full_text:
+                content.append({"type": "text", "text": full_text})
+            for data_url in images:
+                content.append({"type": "image_url", "image_url": {"url": data_url}})
     else:
         content = full_text
 
@@ -169,7 +173,10 @@ def _run_agent(agent, user_input: str, config: dict, q: queue.Queue, detached: t
         emit(sse_event("done", {}))
     except Exception as e:
         logger.error("Agent stream error: %s", e, exc_info=True)
-        emit(sse_event("error", {"message": str(e)}))
+        err_msg = str(e)
+        if "<!DOCTYPE" in err_msg or "<html" in err_msg:
+            err_msg = "API 服务暂时不可用（502），可能是额度耗尽或服务异常，请稍后重试或更换模型。"
+        emit(sse_event("error", {"message": err_msg}))
     finally:
         q.put(_SENTINEL)
 

@@ -1156,9 +1156,9 @@ def settings_update(req: SettingsUpdateRequest, request: Request):
 
     # API Key 变更 → 清 agent 缓存
     api_key_keys = {
-        "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_SUB_TOKEN", "OPENAI_API_KEY",
-        "TAVILY_API_KEY",
-        "MINERU_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_HON_TOKEN", "ANTHROPIC_SUB_TOKEN",
+        "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "MODEL_API_KEY",
+        "DASHSCOPE_API_KEY", "TAVILY_API_KEY", "MINERU_API_KEY",
     }
     if changed & api_key_keys:
         request.app.state.agent_manager.invalidate_cache()
@@ -1183,6 +1183,15 @@ def settings_update(req: SettingsUpdateRequest, request: Request):
 def _get_skills_dir() -> str:
     from src.agent.main import SKILLS_DIR
     return SKILLS_DIR
+
+
+@router.post("/skills/reveal")
+def skills_reveal():
+    """在文件管理器中打开技能目录。"""
+    skills_dir = _get_skills_dir()
+    os.makedirs(skills_dir, exist_ok=True)
+    os.startfile(skills_dir)
+    return {"ok": True}
 
 
 def _parse_skill_md(path: str) -> dict:

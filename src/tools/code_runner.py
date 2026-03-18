@@ -5,6 +5,7 @@ Python 代码执行工具
 每次执行在独立子进程中运行，无状态，默认超时 30 秒（可配置）。
 """
 import os
+import re
 import subprocess
 import tempfile
 import sys
@@ -34,6 +35,25 @@ _PYTHON = _find_python()
 _DEFAULT_TIMEOUT = 30  # 默认超时（秒）
 _MAX_TIMEOUT = 300  # 最大超时限制（5 分钟）
 _MAX_OUTPUT = 10_000  # 最大输出字符数
+
+# --- 安全检查：防止代码删除文件/目录 ---
+_DANGEROUS_PATTERNS = [
+    (r'\bshutil\s*\.\s*rmtree\b', "禁止使用 shutil.rmtree（递归删除目录）"),
+    (r'\bos\s*\.\s*remove\b', "禁止使用 os.remove（删除文件）"),
+    (r'\bos\s*\.\s*unlink\b', "禁止使用 os.unlink（删除文件）"),
+    (r'\bos\s*\.\s*rmdir\b', "禁止使用 os.rmdir（删除目录）"),
+    (r'\bos\s*\.\s*removedirs\b', "禁止使用 os.removedirs（递归删除目录）"),
+    (r'\bsend2trash\b', "禁止使用 send2trash（删除文件）"),
+    (r'\.\s*unlink\s*\(', "禁止使用 .unlink()（删除文件）"),
+    (r'\.\s*rmdir\s*\(', "禁止使用 .rmdir()（删除目录）"),
+]
+
+def _check_code_safety(code: str) -> str | None:
+    """检查代码是否包含文件删除操作，返回拒绝原因或 None（安全）。"""
+    for pattern, reason in _DANGEROUS_PATTERNS:
+        if re.search(pattern, code):
+            return reason
+    return None
 
 # 工作目录：data/tmp（上传的 Excel 等文件存放于此）
 _user_data = os.environ.get("ARCSTONE_ECON_USER_DATA")
@@ -67,8 +87,9 @@ def run_python(code: str, timeout: int = 30) -> str:
         - 每次执行独立，变量不跨次保留
         - 默认超时 30 秒，大计算量任务可通过 timeout 参数延长（如 timeout=120）
         - 可用库：numpy, scipy, pandas, matplotlib 等已安装的库
-        - 安装新包：用 subprocess.run(["uv", "pip", "install", "包名"], ...) 速度最快，或用 subprocess.run([sys.executable, "-m", "pip", "install", "包名"], ...) 作为备选
-        - 国内镜像加速：uv pip install --index-url https://mirrors.aliyun.com/pypi/simple/ 包名
+        - 安装新包：用 subprocess.run(["uv", "pip", "install", "--system", "--python", sys.executable, "包名"], check=True)，速度最快且确保装到当前环境
+        - 备选：subprocess.run([sys.executable, "-m", "pip", "install", "包名"], check=True)
+        - 国内镜像加速：加 "-i", "https://mirrors.aliyun.com/pypi/simple/" 参数
         - 画图请用 plt.savefig
 
     示例：
@@ -77,6 +98,11 @@ def run_python(code: str, timeout: int = 30) -> str:
     """
     # 限制超时范围
     timeout = max(1, min(timeout, _MAX_TIMEOUT))
+
+    # 安全检查：拒绝危险代码
+    danger = _check_code_safety(code)
+    if danger:
+        return f"代码安全检查未通过：{danger}。该操作存在安全风险，已被自动拦截。"
 
     # 将代码中的虚拟路径（/workspace/xxx）替换为真实磁盘路径
     code = resolve_virtual_paths_in_code(code)

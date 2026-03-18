@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import {
   X, Plus, Trash2, Save, Loader2, Wand2, FileText, FolderOpen,
-  ChevronDown, ChevronRight, Pencil, XCircle, FilePlus,
+  ChevronDown, ChevronRight, Pencil, XCircle, FilePlus, ExternalLink,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   listSkills, getSkill, updateSkill, deleteSkill,
   listSkillFiles, readSkillFile, writeSkillFile, deleteSkillFile,
+  revealSkillsFolder,
 } from "@/lib/api";
 import type { SkillSummary, SkillFile } from "@/lib/api";
 
@@ -211,10 +212,17 @@ export default function SkillPanel({ open, onClose }: SkillPanelProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3.5 border-b border-sand-200/60">
           <span className="text-[0.8125rem] font-semibold text-sand-700">技能管理</span>
-          <button onClick={onClose}
-            className="p-1.5 rounded-lg text-sand-400 hover:text-sand-600 hover:bg-sand-200/50 transition-colors">
-            <X size={15} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={() => revealSkillsFolder().catch(() => {})}
+              className="p-1.5 rounded-lg text-sand-400 hover:text-sand-600 hover:bg-sand-200/50 transition-colors"
+              title="在文件管理器中打开">
+              <ExternalLink size={14} />
+            </button>
+            <button onClick={onClose}
+              className="p-1.5 rounded-lg text-sand-400 hover:text-sand-600 hover:bg-sand-200/50 transition-colors">
+              <X size={15} />
+            </button>
+          </div>
         </div>
 
         {/* Body — 双栏 */}

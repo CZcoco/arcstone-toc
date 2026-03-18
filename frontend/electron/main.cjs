@@ -9,23 +9,15 @@ const API_HOST = "127.0.0.1";
 const DEFAULT_PORT = Number(process.env.ARCSTONE_ECON_API_PORT || 18081);
 const PACKAGED_BACKEND_START_TIMEOUT_MS = 5 * 60 * 1000;
 const PACKAGED_BACKEND_HEALTH_RETRIES = 5 * 60;
-const STATUS_PREFIX = "ARCSTONE_STATUS=";
 
 let pyProcess = null;
 let loadingWin = null;
 let actualPort = DEFAULT_PORT;
-let stdoutBuffer = "";
-let lastLoadingStatus = {
-  title: "正在启动 econ-agent",
-  detail: "首次启动可能需要联网安装最小依赖。",
-  status: "info",
-};
 
 function getPythonPath() {
   if (app.isPackaged) {
     return path.join(process.resourcesPath, "python", "python.exe");
   }
-  // 开发模式：优先使用项目根目录的虚拟环境，其次环境变量，最后系统 PATH
   const projectRoot = getProjectRoot();
   const venvPython = path.join(projectRoot, ".venv", "Scripts", "python.exe");
   if (fs.existsSync(venvPython)) {
@@ -43,7 +35,7 @@ function getProjectRoot() {
 
 /** 用户数据目录：%APPDATA%/Arcstone-econ */
 function getUserDataDir() {
-  return app.getPath("userData"); // %APPDATA%/Arcstone-econ
+  return app.getPath("userData");
 }
 
 /** Ensure required runtime data directories exist. */
@@ -69,48 +61,6 @@ function killOldBackend() {
   }
 }
 
-function getLoadingPageScript(payload) {
-  return `window.__updateLoadingStatus && window.__updateLoadingStatus(${JSON.stringify(payload)});`;
-}
-
-function updateLoadingStatus(patch) {
-  lastLoadingStatus = {
-    ...lastLoadingStatus,
-    ...patch,
-  };
-  if (!loadingWin || loadingWin.isDestroyed()) return;
-  const send = () => loadingWin.webContents.executeJavaScript(getLoadingPageScript(lastLoadingStatus)).catch(() => {});
-  if (loadingWin.webContents.isLoading()) {
-    loadingWin.webContents.once("did-finish-load", send);
-    return;
-  }
-  send();
-}
-
-function handleBackendStdoutChunk(text) {
-  stdoutBuffer += text;
-  const normalized = stdoutBuffer.replace(/\r\n/g, "\n");
-  const lines = normalized.split("\n");
-  stdoutBuffer = lines.pop() || "";
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    console.log("[py]", line);
-    const portMatch = line.match(/ARCSTONE_PORT=(\d+)/);
-    if (portMatch) {
-      actualPort = parseInt(portMatch[1], 10);
-      continue;
-    }
-    if (!line.startsWith(STATUS_PREFIX)) continue;
-    try {
-      const payload = JSON.parse(line.slice(STATUS_PREFIX.length));
-      updateLoadingStatus(payload);
-    } catch (error) {
-      console.warn("[py] failed to parse status event", error);
-    }
-  }
-}
-
 /**
  * 启动 Python 后端，返回 Promise<number>（实际端口）。
  * 打包模式传 port=0 让 OS 分配空闲端口；开发模式用固定端口。
@@ -120,14 +70,6 @@ function startPython() {
     const projectRoot = getProjectRoot();
     const envPort = app.isPackaged ? "0" : String(DEFAULT_PORT);
 
-    updateLoadingStatus({
-      title: "正在启动后端",
-      detail: app.isPackaged
-        ? "正在拉起内置后端，首次启动可能需要安装最小依赖。"
-        : "正在拉起开发环境后端。",
-      status: "info",
-    });
-
     if (app.isPackaged) {
       const backendExe = path.join(process.resourcesPath, "backend", "backend.exe");
       pyProcess = spawn(backendExe, [], {
@@ -136,6 +78,7 @@ function startPython() {
           ...process.env,
           PYTHON_EXECUTABLE: getPythonPath(),
           PYTHONUTF8: "1",
+          PYTHONUNBUFFERED: "1",
           ARCSTONE_ECON_USER_DATA: getUserDataDir(),
           ARCSTONE_ECON_API_PORT: envPort,
           ARCSTONE_ECON_INSTALL_ROOT: projectRoot,
@@ -150,6 +93,7 @@ function startPython() {
           ...process.env,
           PYTHON_EXECUTABLE: pythonPath,
           PYTHONUTF8: "1",
+          PYTHONUNBUFFERED: "1",
           ARCSTONE_ECON_USER_DATA: getUserDataDir(),
           ARCSTONE_ECON_API_PORT: envPort,
         },
@@ -161,17 +105,12 @@ function startPython() {
 
     pyProcess.stdout.on("data", (d) => {
       const text = d.toString();
-      handleBackendStdoutChunk(text);
+      console.log("[py]", text);
       if (!portResolved) {
         const match = text.match(/ARCSTONE_PORT=(\d+)/);
         if (match) {
           actualPort = parseInt(match[1], 10);
           portResolved = true;
-          updateLoadingStatus({
-            title: "后端已启动",
-            detail: `后端已监听本地端口 ${actualPort}，正在检查服务状态。`,
-            status: "success",
-          });
           resolve(actualPort);
         }
       }
@@ -209,20 +148,9 @@ function waitForBackend(maxRetries = 60) {
   return new Promise((resolve, reject) => {
     let count = 0;
     const check = () => {
-      updateLoadingStatus({
-        title: "正在检查后端健康状态",
-        detail: `正在连接 http://${API_HOST}:${actualPort}/api/health`,
-        status: "info",
-      });
       http.get(`http://${API_HOST}:${actualPort}/api/health`, (res) => {
-        if (res.statusCode === 200) {
-          updateLoadingStatus({
-            title: "启动完成",
-            detail: "后端已就绪，正在打开主界面。",
-            status: "success",
-          });
-          resolve();
-        } else retry();
+        if (res.statusCode === 200) resolve();
+        else retry();
       }).on("error", retry);
     };
     function retry() {
@@ -236,8 +164,8 @@ function waitForBackend(maxRetries = 60) {
 /** 启动时显示 loading 窗口 */
 function createLoadingWindow() {
   loadingWin = new BrowserWindow({
-    width: 420,
-    height: 260,
+    width: 360,
+    height: 200,
     frame: false,
     resizable: false,
     transparent: false,
@@ -246,9 +174,6 @@ function createLoadingWindow() {
     webPreferences: { nodeIntegration: false, contextIsolation: true },
   });
   loadingWin.loadFile(path.join(__dirname, "loading.html"));
-  loadingWin.webContents.once("did-finish-load", () => {
-    updateLoadingStatus(lastLoadingStatus);
-  });
   loadingWin.on("closed", () => { loadingWin = null; });
 }
 
@@ -268,7 +193,7 @@ function createWindow() {
     },
   });
 
-  // 隐藏菜单栏（File Edit View Window Help）
+  // 隐藏菜单栏
   win.removeMenu();
   Menu.setApplicationMenu(null);
 
@@ -300,16 +225,11 @@ app.whenReady().then(async () => {
     await startPython();
     await waitForBackend(app.isPackaged ? PACKAGED_BACKEND_HEALTH_RETRIES : 60);
   } catch (e) {
-    updateLoadingStatus({
-      title: "启动失败",
-      detail: `${lastLoadingStatus.detail || "后端服务未能启动。"}\n${e.message}`,
-      status: "error",
-    });
     if (loadingWin) { loadingWin.close(); loadingWin = null; }
     const extraHint = app.isPackaged
       ? "\n\n首次启动可能正在联网安装 Python 依赖，请确认网络可用后稍候重试。"
       : "";
-    dialog.showErrorBox("启动失败", `后端服务未能启动：${e.message}\n\n最后阶段：${lastLoadingStatus.title}${extraHint}`);
+    dialog.showErrorBox("启动失败", `后端服务未能启动：${e.message}${extraHint}`);
     app.quit();
     return;
   }

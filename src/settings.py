@@ -20,10 +20,13 @@ SETTINGS_SCHEMA = [
         "group": "模型 API",
         "keys": [
             {"key": "ANTHROPIC_AUTH_TOKEN", "label": "Claude API（API额度）", "sensitive": True},
+            {"key": "ANTHROPIC_HON_TOKEN", "label": "Claude API2（API额度）", "sensitive": True},
             {"key": "ANTHROPIC_SUB_TOKEN", "label": "Claude Plan（订阅）", "sensitive": True},
             {"key": "OPENAI_API_KEY", "label": "GPT-5.4", "sensitive": True},
+            {"key": "MODEL_API_KEY", "label": "应急模型", "sensitive": True},
             {"key": "TAVILY_API_KEY", "label": "Tavily 搜索", "sensitive": True},
             {"key": "MINERU_API_KEY", "label": "MinerU PDF 解析", "sensitive": True},
+            {"key": "DASHSCOPE_API_KEY", "label": "阿里云DashScope（记忆语义检索）", "sensitive": True},
         ],
     },
     {
