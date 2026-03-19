@@ -51,7 +51,8 @@ def sse_event(event_type: str, data: dict) -> str:
 def _run_agent(agent, user_input: str, config: dict, q: queue.Queue, detached: threading.Event,
                cancelled: threading.Event,
                images: list[str] | None = None, file_summaries: list[str] | None = None,
-               model: str = "claude-sonnet", attachments: list[dict] | None = None):
+               model: str = "claude-sonnet", attachments: list[dict] | None = None,
+               workspace_path: str | None = None):
     """在独立线程中执行 agent.stream()，将 SSE 事件推入 queue。
 
     cancelled 被 set 后立即停止迭代（用户主动停止）。
@@ -59,6 +60,10 @@ def _run_agent(agent, user_input: str, config: dict, q: queue.Queue, detached: t
     """
     # 设置当前模型标识，供 read_image 等工具判断多模态能力
     os.environ["CURRENT_MODEL"] = model
+
+    # 设置当前线程的工作区路径覆盖（并发会话隔离）
+    from src.tools.path_resolver import set_thread_workspace
+    set_thread_workspace(workspace_path)
 
     # 构建消息内容
     text_parts = []
@@ -194,7 +199,8 @@ def stream_to_sse(agent, user_input: str, config: dict,
                   images: list[str] | None = None,
                   file_summaries: list[str] | None = None,
                   model: str = "claude-sonnet",
-                  attachments: list[dict] | None = None) -> Generator[str, None, None]:
+                  attachments: list[dict] | None = None,
+                  workspace_path: str | None = None) -> Generator[str, None, None]:
     """将 agent.stream() 转换为 SSE 事件流。
 
     用户点击停止时，cancel_stream() 设置取消信号，agent 线程在下次 yield 时退出。
@@ -210,7 +216,8 @@ def stream_to_sse(agent, user_input: str, config: dict,
     thread = threading.Thread(
         target=_run_agent,
         args=(agent, user_input, config, q, detached, cancelled),
-        kwargs={"images": images, "file_summaries": file_summaries, "model": model, "attachments": attachments},
+        kwargs={"images": images, "file_summaries": file_summaries, "model": model,
+                "attachments": attachments, "workspace_path": workspace_path},
         daemon=True,
     )
     thread.start()

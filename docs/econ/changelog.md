@@ -1,5 +1,35 @@
 # 改动日志
 
+## 2026-03-19：工作区面板增强 + 公式格式规范
+
+| 文件 | 改动 |
+|------|------|
+| `frontend/src/components/WorkspacePanel.tsx` | 文件列表改为树形结构，子文件夹可折叠收起；预览区标题栏新增"在新窗口预览"按钮，独立窗口支持 markdown 渲染（标题/表格/列表/代码块）和 KaTeX 公式渲染 |
+| `src/agent/prompts.py` | system prompt 新增公式格式规范：要求 agent 写 markdown 时用 `$...$` / `$$...$$` LaTeX 语法，禁止用 Unicode 希腊字母 |
+
+## 2026-03-19：并发会话工作区隔离
+
+两个会话同时运行时，各自的工具（run_python/read_pdf/read_image）解析到各自的工作区目录，互不干扰。
+
+| 文件 | 改动 |
+|------|------|
+| `src/tools/path_resolver.py` | 新增 `threading.local()` + `set_thread_workspace()`，`resolve_virtual_path` / `resolve_virtual_paths_in_code` 优先读线程本地的 workspace 覆盖，fallback 到全局字典 |
+| `src/api/stream.py` | `_run_agent` / `stream_to_sse` 新增 `workspace_path` 参数，线程启动时调用 `set_thread_workspace` |
+| `src/api/routes.py` | `chat_stream` / `chat_resend` / `archive` 从 session_meta 读 workspace_path，传给 `_get_agent` 和 `stream_to_sse`；`_get_agent` 新增 `workspace_dir` 参数 |
+| `src/api/app.py` | `AgentManager.get()` 缓存 key 从 `model_name` 改为 `(model_name, workspace_dir)` 二元组；`set_workspace` 不再清缓存 |
+
+## 2026-03-18：会话绑定工作区路径
+
+每个会话记住自己的工作区路径，切换会话时自动恢复。
+
+| 文件 | 改动 |
+|------|------|
+| `src/api/routes.py` | `_set_session_preview` 每次发消息同步写入 `workspace_path`；`session_history` / `session_list` 响应新增 `workspace_path` 字段；`workspace_set` / `workspace_pick` 接受 `thread_id` 参数，写入对应会话 meta |
+| `frontend/src/types.ts` | `Session` 接口新增可选 `workspace_path` |
+| `frontend/src/lib/api.ts` | `setWorkspace()` / `pickWorkspaceFolder()` 新增 `threadId` 参数；`getSessionHistory()` 返回类型新增 `workspace_path` |
+| `frontend/src/App.tsx` | `handleSelectSession` 拿到 `workspace_path` 后自动调 `setWorkspace` 恢复；`WorkspacePanel` 传入 `threadId` |
+| `frontend/src/components/WorkspacePanel.tsx` | 接收 `threadId` prop，`setWorkspace` / `pickWorkspaceFolder` 调用时传入 |
+
 ## 2026-03-13：生产环境系统性修复（6 项）
 
 详细文档见 [`production-changes.md`](./production-changes.md)

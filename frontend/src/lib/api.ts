@@ -37,7 +37,7 @@ export function listSessions() {
 }
 
 export function getSessionHistory(threadId: string) {
-  return request<{ messages: Array<{ role: string; content: string; tool_calls?: any[]; name?: string; tool_call_id?: string }> }>(
+  return request<{ messages: Array<{ role: string; content: string; tool_calls?: any[]; name?: string; tool_call_id?: string }>; workspace_path?: string }>(
     `${BASE_URL}/session/${threadId}`
   );
 }
@@ -367,11 +367,11 @@ export function getWorkspace() {
   return request<{ path: string; files: WorkspaceFile[] }>(`${BASE_URL}/workspace`);
 }
 
-export function setWorkspace(path: string) {
+export function setWorkspace(path: string, threadId?: string) {
   return request<{ ok: boolean; path: string }>(`${BASE_URL}/workspace/set`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path }),
+    body: JSON.stringify({ path, thread_id: threadId }),
   });
 }
 
@@ -388,8 +388,9 @@ export function deleteWorkspaceFile(filePath: string) {
   );
 }
 
-export function pickWorkspaceFolder() {
-  return request<{ path: string | null }>(`${BASE_URL}/workspace/pick`, {
+export function pickWorkspaceFolder(threadId?: string) {
+  const params = threadId ? `?thread_id=${encodeURIComponent(threadId)}` : "";
+  return request<{ path: string | null }>(`${BASE_URL}/workspace/pick${params}`, {
     method: "POST",
   });
 }

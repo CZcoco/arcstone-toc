@@ -87,6 +87,7 @@ export interface Session {
   thread_id: string;
   title: string;
   preview: string;
+  workspace_path?: string;
 }
 
 // --- 记忆 ---

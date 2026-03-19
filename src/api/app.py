@@ -50,7 +50,7 @@ def _emit_startup_status(event: str, *, title: str, detail: str = "", current: i
 
 
 class AgentManager:
-    """按 model_name 缓存 agent 实例，共享 store 和 checkpointer。"""
+    """按 (model_name, workspace_dir) 缓存 agent 实例，共享 store 和 checkpointer。"""
 
     def __init__(self, store: SqliteStore, checkpointer: SqliteSaver, workspace_dir: str):
         self.store = store
@@ -60,18 +60,20 @@ class AgentManager:
         self._custom_prompt: str | None = None
         self._workspace_dir: str = workspace_dir
 
-    def get(self, model_name: str = "claude-sonnet"):
+    def get(self, model_name: str = "claude-sonnet", workspace_dir: str | None = None):
+        ws = workspace_dir or self._workspace_dir
+        cache_key = (model_name, ws)
         with self._lock:
-            if model_name not in self._agents:
+            if cache_key not in self._agents:
                 agent, _, _ = create_econ_agent(
                     model_name=model_name,
                     store=self.store,
                     checkpointer=self.checkpointer,
                     system_prompt=self._custom_prompt,
-                    workspace_dir=self._workspace_dir,
+                    workspace_dir=ws,
                 )
-                self._agents[model_name] = agent
-            return self._agents[model_name]
+                self._agents[cache_key] = agent
+            return self._agents[cache_key]
 
     def set_system_prompt(self, prompt: str | None):
         """更新自定义 system prompt 并清除 agent 缓存，下次 get() 时重建。"""
@@ -80,11 +82,10 @@ class AgentManager:
             self._agents.clear()
 
     def set_workspace(self, path: str):
-        """切换工作区目录，清除 agent 缓存，下次 get() 时以新路径重建。"""
+        """切换全局默认工作区目录。不清缓存（agent 按 workspace 分别缓存）。"""
         from src.tools.path_resolver import set_virtual_root
         with self._lock:
             self._workspace_dir = path
-            self._agents.clear()
         set_virtual_root("/workspace/", path)
 
     def invalidate_cache(self):

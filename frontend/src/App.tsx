@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import { useChat } from "@/hooks/useChat";
-import { createSession, getSessionHistory, uploadPdfs, uploadImage, uploadExcel, setKBRagConfig } from "@/lib/api";
+import { createSession, getSessionHistory, setWorkspace, uploadPdfs, uploadImage, uploadExcel, setKBRagConfig } from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
 import ChatMessage from "@/components/ChatMessage";
 import ChatInput from "@/components/ChatInput";
@@ -195,8 +195,12 @@ export default function App() {
       setThreadId(tid as ReturnType<typeof crypto.randomUUID>);
       setAttachments([]);
       try {
-        const { messages: history } = await getSessionHistory(tid);
+        const { messages: history, workspace_path } = await getSessionHistory(tid);
         loadHistory(history);
+        // 如果该会话绑定了工作区，自动切换
+        if (workspace_path) {
+          setWorkspace(workspace_path, tid).catch(() => {});
+        }
       } catch {
         // ignore
       }
@@ -295,7 +299,7 @@ export default function App() {
         {promptOpen && <SystemPromptPanel open={promptOpen} onClose={() => setPromptOpen(false)} />}
         {skillOpen && <SkillPanel open={skillOpen} onClose={() => setSkillOpen(false)} />}
         {settingsOpen && <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} onSaved={handleSettingsSaved} />}
-        {workspaceOpen && <WorkspacePanel open={workspaceOpen} onClose={() => setWorkspaceOpen(false)} />}
+        {workspaceOpen && <WorkspacePanel open={workspaceOpen} onClose={() => setWorkspaceOpen(false)} threadId={threadId} />}
       </Suspense>
     </div>
   );

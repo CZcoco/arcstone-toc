@@ -139,9 +139,9 @@ _SSE_HEADERS = {
 }
 
 
-def _get_agent(request: Request, model: str = "claude-sonnet"):
+def _get_agent(request: Request, model: str = "claude-sonnet", workspace_dir: str | None = None):
     """从 AgentManager 获取指定模型的 agent"""
-    return request.app.state.agent_manager.get(model)
+    return request.app.state.agent_manager.get(model, workspace_dir=workspace_dir)
 
 
 def _get_shared(request: Request):
@@ -223,21 +223,29 @@ def list_models(request: Request):
 
 @router.post("/chat/stream")
 def chat_stream(req: ChatRequest, request: Request):
-    agent = _get_agent(request, req.model)
     store = request.app.state.store
+    manager = request.app.state.agent_manager
     config = {"configurable": {"thread_id": req.thread_id}}
     images = [_image_store.pop(iid, None) for iid in req.image_ids]
     images = [img for img in images if img]
 
-    # 首次发消息时存 preview（轻量，不反序列化 checkpoint）
-    _set_session_preview(store, req.thread_id, _extract_text(req.message))
+    # 读取该会话绑定的工作区路径，fallback 到全局默认
+    meta = _get_session_meta(store, req.thread_id)
+    ws_path = meta.get("workspace_path") or manager._workspace_dir
+
+    # 首次发消息时存 preview + 当前工作区路径
+    _set_session_preview(store, req.thread_id, _extract_text(req.message),
+                         workspace_path=ws_path)
+
+    agent = _get_agent(request, req.model, workspace_dir=ws_path)
 
     return StreamingResponse(
         stream_to_sse(agent, req.message, config,
                       images=images,
                       file_summaries=req.file_summaries,
                       model=req.model or "claude-sonnet",
-                      attachments=[a.model_dump() for a in req.attachments]),
+                      attachments=[a.model_dump() for a in req.attachments],
+                      workspace_path=ws_path),
         media_type="text/event-stream",
         headers=_SSE_HEADERS,
     )
@@ -246,7 +254,12 @@ def chat_stream(req: ChatRequest, request: Request):
 @router.post("/chat/resend")
 def chat_resend(req: ResendRequest, request: Request):
     """编辑并重发：回退到第 message_index 条用户消息之前的状态，重新发送。"""
-    agent = _get_agent(request, req.model)
+    store, _ = _get_shared(request)
+    manager = request.app.state.agent_manager
+    meta = _get_session_meta(store, req.thread_id)
+    ws_path = meta.get("workspace_path") or manager._workspace_dir
+
+    agent = _get_agent(request, req.model, workspace_dir=ws_path)
     config = {"configurable": {"thread_id": req.thread_id}}
 
     target_config = None
@@ -263,7 +276,7 @@ def chat_resend(req: ResendRequest, request: Request):
         target_config = config
 
     return StreamingResponse(
-        stream_to_sse(agent, req.message, target_config),
+        stream_to_sse(agent, req.message, target_config, workspace_path=ws_path),
         media_type="text/event-stream",
         headers=_SSE_HEADERS,
     )
@@ -280,11 +293,16 @@ def cancel_chat(req: CancelRequest):
 
 @router.post("/archive")
 def archive(req: ArchiveRequest, request: Request):
-    agent = _get_agent(request, req.model)
+    store, _ = _get_shared(request)
+    manager = request.app.state.agent_manager
+    meta = _get_session_meta(store, req.thread_id)
+    ws_path = meta.get("workspace_path") or manager._workspace_dir
+
+    agent = _get_agent(request, req.model, workspace_dir=ws_path)
     config = {"configurable": {"thread_id": req.thread_id}}
 
     return StreamingResponse(
-        stream_to_sse(agent, ARCHIVE_PROMPT, config),
+        stream_to_sse(agent, ARCHIVE_PROMPT, config, workspace_path=ws_path),
         media_type="text/event-stream",
         headers=_SSE_HEADERS,
     )
@@ -309,17 +327,28 @@ def _set_session_title(store, thread_id: str, title: str):
     store.put(("session_meta",), thread_id, meta)
 
 
-def _set_session_preview(store, thread_id: str, preview: str):
-    """首次发消息时存 preview，后续不覆盖。"""
+def _set_session_preview(store, thread_id: str, preview: str, *, workspace_path: str | None = None):
+    """首次发消息时存 preview，后续不覆盖。始终同步 workspace_path。"""
     meta = _get_session_meta(store, thread_id)
+    changed = False
     if not meta.get("preview"):
         meta["preview"] = preview[:100]
+        changed = True
+    if workspace_path is not None:
+        meta["workspace_path"] = workspace_path
+        changed = True
+    if changed:
         store.put(("session_meta",), thread_id, meta)
 
 
 @router.post("/session/new")
-def session_new():
-    return SessionNewResponse(thread_id=str(uuid.uuid4()))
+def session_new(request: Request):
+    tid = str(uuid.uuid4())
+    # 新会话立即绑定当前工作区路径
+    store, _ = _get_shared(request)
+    manager = request.app.state.agent_manager
+    store.put(("session_meta",), tid, {"workspace_path": manager._workspace_dir})
+    return SessionNewResponse(thread_id=tid)
 
 
 @router.get("/session/list")
@@ -342,6 +371,7 @@ def session_list(request: Request):
             "thread_id": tid,
             "title": meta.get("title", ""),
             "preview": meta.get("preview", ""),
+            "workspace_path": meta.get("workspace_path"),
         })
 
     return {"sessions": sessions}
@@ -372,12 +402,13 @@ def session_delete(thread_id: str, request: Request):
 
 @router.get("/session/{thread_id}")
 def session_history(thread_id: str, request: Request):
-    _, checkpointer = _get_shared(request)
+    store, checkpointer = _get_shared(request)
     config = {"configurable": {"thread_id": thread_id}}
     checkpoint = checkpointer.get(config)
 
     if not checkpoint or "channel_values" not in checkpoint:
-        return {"messages": []}
+        meta = _get_session_meta(store, thread_id)
+        return {"messages": [], "workspace_path": meta.get("workspace_path")}
 
     raw_messages = checkpoint["channel_values"].get("messages", [])
     messages = []
@@ -417,7 +448,8 @@ def session_history(thread_id: str, request: Request):
 
         messages.append(entry)
 
-    return {"messages": messages}
+    meta = _get_session_meta(store, thread_id)
+    return {"messages": messages, "workspace_path": meta.get("workspace_path")}
 
 
 # --- Memory ---
@@ -1362,6 +1394,7 @@ def delete_skill_file(skill_name: str, file_path: str):
 
 class WorkspaceSetRequest(BaseModel):
     path: str
+    thread_id: str | None = None
 
 
 def _walk_workspace(root: str) -> list[dict]:
@@ -1418,11 +1451,17 @@ def workspace_set(req: WorkspaceSetRequest, request: Request):
     manager = request.app.state.agent_manager
     manager.set_workspace(path)
 
+    # 绑定到指定会话
+    if req.thread_id:
+        meta = _get_session_meta(store, req.thread_id)
+        meta["workspace_path"] = path
+        store.put(("session_meta",), req.thread_id, meta)
+
     return {"ok": True, "path": path}
 
 
 @router.post("/workspace/pick")
-def workspace_pick(request: Request):
+def workspace_pick(request: Request, thread_id: str | None = Query(None)):
     """弹出系统文件夹选择器（tkinter 子进程），选中后自动设为工作区。"""
     # 用 PowerShell 原生文件夹选择器，不依赖 tkinter（打包后嵌入式 Python 没有 tkinter）
     ps_script = (
@@ -1454,6 +1493,12 @@ def workspace_pick(request: Request):
     store.put(("settings",), "workspace_dir", {"path": path})
     manager = request.app.state.agent_manager
     manager.set_workspace(path)
+
+    # 绑定到指定会话
+    if thread_id:
+        meta = _get_session_meta(store, thread_id)
+        meta["workspace_path"] = path
+        store.put(("session_meta",), thread_id, meta)
 
     return {"path": path}
 
