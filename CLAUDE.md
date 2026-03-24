@@ -88,6 +88,9 @@ build_backend.bat  # 需要 PyInstaller，输出 dist/backend/backend.exe
 | 模型配置 | `src/agent/config.py` (`NEW_API_BASE_URL`, `get_llm()`) |
 | FastAPI 应用 | `src/api/app.py` (`AgentManager`, lifespan) |
 | API 路由 | `src/api/routes.py` |
+| 认证服务 | `src/api/auth.py` (`quick_start()`, `get_user_info()`) |
+| 前端认证 | `frontend/src/lib/auth.ts`, `frontend/src/hooks/useAuth.ts` |
+| 登录页面 | `frontend/src/components/AuthScreen.tsx` |
 | 工具注册 | `src/tools/` |
 | 技能模块 | `skills/literature/`, `skills/data/` |
 | 前端入口 | `frontend/src/App.tsx` |
@@ -117,8 +120,9 @@ python tests/test_frontend_ui.py
 所有 LLM 调用统一走 **New API**（OpenAI 兼容格式），模型列表从 `/v1/models` 动态获取。
 
 - **New API 服务器**：`http://43.128.44.82:3000`
-- **认证**：`ECON_USER_TOKEN` 环境变量（`sk-...` 格式）
-- **当前可用模型**：`deepseek-chat`（默认）、`deepseek-reasoner`、`qwen-plus`、`qwen-turbo`
+- **认证**：每用户独立 token（登录时自动创建），存 `ECON_USER_TOKEN` 环境变量
+- **Token 获取**：`POST /api/token/` → `GET /api/token/` → `POST /api/token/:id/key`
+- **当前可用模型**：`deepseek-chat`（默认）、`deepseek-reasoner`、`qwen-plus`、`qwen-turbo`、`glm-5`、`kimi-k2.5`
 - **添加模型**：在 New API 后台添加渠道，客户端自动出现
 
 ## 规则与准则
@@ -144,10 +148,18 @@ python tests/test_frontend_ui.py
 详细改动记录见 `docs/TOC_CHANGELOG.md`，完整计划见 `docs/TOC_PLAN.md`。
 
 - [x] **Phase 0+1**：统一 New API 模式（已完成 2026-03-24）
-- [ ] **Phase 2**：App 内登录/注册/计费 UI
+- [x] **Phase 2**：登录门控 + 每用户独立 Token（已完成 2026-03-24）
+- [ ] **Phase 2.5**：接入支付（微信/支付宝 → New API 用户充值）
 - [ ] **Phase 3**：新手引导、论文模板、品牌更新
 
 ## 版本记录
+
+### v0.7.1-toc (2026-03-24)
+
+- **登录门控**：首次输入用户名+密码 → 自动注册+登录 → 存本地 → 以后自动进
+- **每用户独立 Token**：通过 `POST /api/token/:id/key` 获取明文 key，New API 服务端按用户扣费
+- **AuthMiddleware**：未登录请求返回 401
+- **Sidebar 用户信息**：显示用户名、余额、充值/退出按钮
 
 ### v0.7.0-toc (2026-03-24)
 

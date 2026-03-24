@@ -58,11 +58,73 @@
   - 需要百炼凭证（已有）：`LTAI5tQtx7CSACPwFh8A1NB1` / `llm-fo524vmjsvgfy4fo` / `nvtgp3wdzi`
   - 需要在服务器上执行部署命令
   - 安全组需放行 TCP 8100
-- [ ] **Phase 2：登录/注册/计费 UI**
-  - `src/api/auth.py` — Auth 服务
-  - `frontend/src/components/AuthScreen.tsx` — 登录页
-  - `frontend/src/hooks/useAuth.ts` — Auth hook
-  - `App.tsx` Auth 门控 + 余额显示
-  - `Sidebar.tsx` 用户信息 + 退出
+
+---
+
+## Phase 2：登录门控 + 每用户独立 Token（2026-03-24）
+
+### 认证流程
+
+用户点"开始使用" → 后台自动注册+登录 → 创建独立 token → 存本地 → 以后自动进
+
+**Token 获取流程**（New API v0.11.x 的三步）：
+1. `POST /api/token/` → 创建 token（响应不含明文 key）
+2. `GET /api/token/?p=0` → 列表拿到 token id
+3. `POST /api/token/:id/key` → 取回明文 key
+
+每个用户有独立 `sk-...` token，New API 服务端自动按用户扣费，无需应用层计费。
+
+### 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `src/api/auth.py` | 后端认证服务：`quick_start()` 自动注册+登录+创建独立 token；`get_user_info()` 查余额；`auto_login()` 自动重登录 |
+| `frontend/src/lib/auth.ts` | 前端认证 API：`quickStart()`、`getUserInfo()`、`logout()` |
+| `frontend/src/hooks/useAuth.ts` | React hook：`useAuth()` → `{user, loading, start, logout, refreshBalance}` |
+| `frontend/src/components/AuthScreen.tsx` | 极简"开始使用"页面，输入用户名+密码即可，首次自动创建账号 |
+
+### 修改文件
+
+| 文件 | 改动 |
+|------|------|
+| `src/api/routes.py` | 新增 `/auth/start`（一步注册+登录）、`/auth/user`（获取用户信息，session 过期自动重登录）、`/auth/logout`；登录时保存 `ECON_USER_TOKEN` 到环境变量和 settings.json |
+| `src/api/app.py` | 新增 `AuthMiddleware`：非 auth/health 路径需已登录（检查 `ECON_SESSION_COOKIE`） |
+| `src/settings.py` | `_AUTH_KEYS` 新增 `ECON_USER_TOKEN`、`ECON_SESSION_COOKIE`、`ECON_USER_ID`、`ECON_USERNAME`、`ECON_PASSWORD`，启动时加载到环境变量 |
+| `frontend/src/App.tsx` | 导入 `useAuth` + `AuthScreen`；auth 门控（未登录显示 AuthScreen）；发消息后刷新余额 |
+| `frontend/src/components/Sidebar.tsx` | 底部新增用户信息区：用户名、余额、充值按钮（跳 New API 充值页）、退出按钮 |
+
+### 环境变量变化
+
+| 变量 | 状态 | 说明 |
+|------|------|------|
+| `ECON_USER_TOKEN` | 更新 | 现在是**每用户独立 token**（非共享），登录时自动创建 |
+| `ECON_SESSION_COOKIE` | **新增** | New API session cookie，用于查询用户信息 |
+| `ECON_USER_ID` | **新增** | New API 用户 ID |
+| `ECON_USERNAME` | **新增** | 用户名（用于自动重登录） |
+| `ECON_PASSWORD` | **新增** | 密码（用于自动重登录，存本地 settings.json） |
+
+### New API 认证要点
+
+- 登录：`POST /api/user/login` → 返回 session cookie + user info
+- 用户管理 API：session cookie + `New-Api-User: {user_id}` header
+- Token 明文获取：`POST /api/token/:id/key` → `data.key`
+- 限流较严格：注册/登录频繁调用会 429，代码中加了 `sleep(1)` 和 `_safe_json` 防护
+
+### 验证结果（2026-03-24）
+
+- [x] 已有用户登录成功，拿到 session cookie + user info
+- [x] 新用户自动注册+登录成功
+- [x] 错误密码正确拒绝
+- [x] `POST /api/token/:id/key` 成功取回明文 token
+- [x] Per-user token 调 `/v1/models` 返回 6 个模型
+- [x] auto_login 正常工作（成功/失败均正确）
+- [x] 前端 TypeScript 编译零错误
+- [x] 前端 Vite 构建成功
+
+---
+
+### 待完成
+
+- [ ] **Phase 2.5：接入支付**（微信/支付宝 → New API 用户充值）
 - [ ] **Phase 3：体验打磨**
   - 新手引导、论文模板、品牌更新
