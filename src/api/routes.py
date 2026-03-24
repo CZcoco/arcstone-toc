@@ -209,13 +209,15 @@ class QuickStartRequest(BaseModel):
 
 @router.post("/auth/start")
 def auth_start(req: QuickStartRequest, request: Request):
-    """一步到位：自动注册（新用户）+ 登录 → 存凭证 → 返回用户信息"""
+    """一步到位：自动注册（新用户）+ 登录 + 创建独立 token → 存凭证"""
     try:
         result = auth_quick_start(req.username, req.password)
-        # 存 session + 凭证（用于自动登录）
+        # 存用户独立 token（用于 LLM 调用）+ session（用于查询用户信息）
+        os.environ["ECON_USER_TOKEN"] = result["token"]
         os.environ["ECON_SESSION_COOKIE"] = result["session_cookie"]
         os.environ["ECON_USER_ID"] = str(result["user_id"])
         current = load_settings(DATA_DIR)
+        current["ECON_USER_TOKEN"] = result["token"]
         current["ECON_SESSION_COOKIE"] = result["session_cookie"]
         current["ECON_USER_ID"] = str(result["user_id"])
         current["ECON_USERNAME"] = req.username
@@ -241,9 +243,11 @@ def auth_user_info():
         if username and password:
             result = auto_login(username, password)
             if result:
+                os.environ["ECON_USER_TOKEN"] = result["token"]
                 os.environ["ECON_SESSION_COOKIE"] = result["session_cookie"]
                 os.environ["ECON_USER_ID"] = str(result["user_id"])
                 save_settings(DATA_DIR, {**settings,
+                    "ECON_USER_TOKEN": result["token"],
                     "ECON_SESSION_COOKIE": result["session_cookie"],
                     "ECON_USER_ID": str(result["user_id"]),
                 })
@@ -261,9 +265,11 @@ def auth_user_info():
         if username and password:
             result = auto_login(username, password)
             if result:
+                os.environ["ECON_USER_TOKEN"] = result["token"]
                 os.environ["ECON_SESSION_COOKIE"] = result["session_cookie"]
                 os.environ["ECON_USER_ID"] = str(result["user_id"])
                 save_settings(DATA_DIR, {**settings,
+                    "ECON_USER_TOKEN": result["token"],
                     "ECON_SESSION_COOKIE": result["session_cookie"],
                     "ECON_USER_ID": str(result["user_id"]),
                 })
@@ -273,13 +279,11 @@ def auth_user_info():
 
 @router.post("/auth/logout")
 def auth_logout():
-    os.environ.pop("ECON_SESSION_COOKIE", None)
-    os.environ.pop("ECON_USER_ID", None)
+    for key in ("ECON_USER_TOKEN", "ECON_SESSION_COOKIE", "ECON_USER_ID"):
+        os.environ.pop(key, None)
     current = load_settings(DATA_DIR)
-    current.pop("ECON_SESSION_COOKIE", None)
-    current.pop("ECON_USER_ID", None)
-    current.pop("ECON_USERNAME", None)
-    current.pop("ECON_PASSWORD", None)
+    for key in ("ECON_USER_TOKEN", "ECON_SESSION_COOKIE", "ECON_USER_ID", "ECON_USERNAME", "ECON_PASSWORD"):
+        current.pop(key, None)
     save_settings(DATA_DIR, current)
     return {"ok": True}
 
