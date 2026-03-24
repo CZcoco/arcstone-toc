@@ -343,6 +343,7 @@ export default function WorkspacePanel({ open, onClose, threadId }: WorkspacePan
         <meta charset="utf-8"/>
         <style>${katexCss}</style>
         <style>
+          html,body{height:auto;overflow-y:auto;}
           body{max-width:800px;margin:40px auto;padding:0 20px;font-family:-apple-system,system-ui,"Segoe UI",sans-serif;color:#333;line-height:1.7;background:#fafaf5;}
           h1{font-size:1.6em;border-bottom:1px solid #ddd;padding-bottom:0.3em;}
           h2{font-size:1.3em;border-bottom:1px solid #eee;padding-bottom:0.2em;}

@@ -163,6 +163,7 @@ MODEL_CONFIG: dict[str, ModelConfigEntry] = {
         "extra_body": {"reasoning_effort": "xhigh"},
         "default_headers": {"User-Agent": "curl/8.0"},
         "timeout": 120,
+        "max_input_tokens": 272000,
         "max_retries": 3,
     },
     "claude-opus-plan": {
