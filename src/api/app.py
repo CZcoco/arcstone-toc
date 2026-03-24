@@ -396,6 +396,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# --- Auth Middleware ---
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse as StarletteJSONResponse
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    EXEMPT_PREFIXES = ("/api/health", "/api/auth/", "/api/install")
+
+    async def dispatch(self, request, call_next):
+        path = request.url.path
+        # 静态资源和非 API 路径不拦截
+        if not path.startswith("/api/") or any(path.startswith(p) for p in self.EXEMPT_PREFIXES):
+            return await call_next(request)
+        session = os.environ.get("ECON_SESSION_COOKIE", "")
+        if not session:
+            return StarletteJSONResponse(
+                status_code=401,
+                content={"ok": False, "message": "请先登录"},
+            )
+        return await call_next(request)
+
+
+app.add_middleware(AuthMiddleware)
+
 # 注册路由
 from src.api.routes import router
 app.include_router(router, prefix="/api")

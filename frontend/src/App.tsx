@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import { useChat } from "@/hooks/useChat";
+import { useAuth } from "@/hooks/useAuth";
 import { createSession, getSessionHistory, setWorkspace, uploadPdfs, uploadImage, uploadExcel, setKBRagConfig } from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
 import ChatMessage from "@/components/ChatMessage";
@@ -8,6 +9,7 @@ import type { Attachment } from "@/components/ChatInput";
 import ModelSelector from "@/components/ModelSelector";
 import type { KBConfig } from "@/types";
 
+const AuthScreen = lazy(() => import("@/components/AuthScreen"));
 const MemoryPanel = lazy(() => import("@/components/MemoryPanel"));
 const KnowledgeBasePanel = lazy(() => import("@/components/KnowledgeBasePanel"));
 const SystemPromptPanel = lazy(() => import("@/components/SystemPromptPanel"));
@@ -20,6 +22,7 @@ const KB_STORAGE_KEY = "arcstone-econ-kb-configs";
 const MAX_ATTACHMENTS = 100;
 
 export default function App() {
+  const { user, loading: authLoading, start, logout, refreshBalance } = useAuth();
   const [threadId, setThreadId] = useState(() => crypto.randomUUID());
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [kbOpen, setKBOpen] = useState(false);
@@ -112,8 +115,10 @@ export default function App() {
 
       sendMessage(content, model, imageIds, fileSummaries, attachmentMetas);
       setAttachments([]);
+      // 延迟刷新余额（等 API 调用完成）
+      setTimeout(() => refreshBalance(), 3000);
     },
-    [sendMessage, model]
+    [sendMessage, model, refreshBalance]
   );
 
   const handleResend = useCallback(
@@ -218,6 +223,22 @@ export default function App() {
     [threadId, clearMessages]
   );
 
+  // Auth gate
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-sand-100">
+        <div className="text-sm text-sand-400">加载中...</div>
+      </div>
+    );
+  }
+  if (!user) {
+    return (
+      <Suspense fallback={null}>
+        <AuthScreen onStart={start} />
+      </Suspense>
+    );
+  }
+
   return (
     <div className="flex h-screen bg-sand-100">
       <Sidebar
@@ -231,6 +252,8 @@ export default function App() {
         onOpenSystemPrompt={() => setPromptOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenWorkspace={() => setWorkspaceOpen(true)}
+        user={user}
+        onLogout={logout}
       />
 
       {/* Main chat area */}

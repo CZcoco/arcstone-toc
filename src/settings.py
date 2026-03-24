@@ -25,6 +25,9 @@ SETTINGS_SCHEMA = [
     },
 ]
 
+# 登录流程写入的 token，不在 UI 里显示但需要启动时加载到环境变量
+_AUTH_KEYS = {"ECON_USER_TOKEN", "ECON_SESSION_COOKIE", "ECON_USER_ID", "ECON_USERNAME", "ECON_PASSWORD"}
+
 # 所有可配置 key 的集合
 _ALL_KEYS: set[str] = set()
 _SENSITIVE_KEYS: set[str] = set()
@@ -66,8 +69,9 @@ def apply_settings_to_environ(data_dir: str):
         current = os.environ.get(key, "")
         if current:
             _env_backup[key] = current
+    loadable = _ALL_KEYS | _AUTH_KEYS
     for key, value in settings.items():
-        if key in _ALL_KEYS and value.strip():
+        if key in loadable and value.strip():
             os.environ[key] = value.strip()
 
 

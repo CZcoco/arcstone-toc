@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, MessageSquare, BookOpen, Database, PanelLeftClose, PanelLeftOpen, Pencil, Trash2, ScrollText, Wand2, Settings2, FolderOpen } from "lucide-react";
+import { Plus, MessageSquare, BookOpen, Database, PanelLeftClose, PanelLeftOpen, Pencil, Trash2, ScrollText, Wand2, Settings2, FolderOpen, LogOut, User, ExternalLink } from "lucide-react";
 import type { Session } from "@/types";
 import { listSessions, renameSession, deleteSession } from "@/lib/api";
 
@@ -32,6 +32,8 @@ interface SidebarProps {
   onOpenSystemPrompt: () => void;
   onOpenSettings: () => void;
   onOpenWorkspace: () => void;
+  user?: { username: string; quota: number; used_quota: number; group: string } | null;
+  onLogout?: () => void;
 }
 
 interface ContextMenu {
@@ -51,6 +53,8 @@ export default function Sidebar({
   onOpenSystemPrompt,
   onOpenSettings,
   onOpenWorkspace,
+  user,
+  onLogout,
 }: SidebarProps) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [collapsed, setCollapsed] = useState(false);
@@ -194,6 +198,15 @@ export default function Sidebar({
         >
           <Settings2 size={16} />
         </button>
+        {user && (
+          <button
+            onClick={onLogout}
+            className="p-2 rounded-lg text-sand-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+            title={`${user.username} - 退出登录`}
+          >
+            <LogOut size={16} />
+          </button>
+        )}
       </div>
     );
   }
@@ -329,6 +342,37 @@ export default function Sidebar({
           设置
         </button>
       </div>
+
+      {/* User info */}
+      {user && (
+        <div className="px-3 py-2.5 border-t border-sand-200/60">
+          <div className="flex items-center gap-2 mb-1.5">
+            <User size={13} className="text-sand-400 shrink-0" />
+            <span className="text-[0.8125rem] text-sand-700 font-medium truncate">{user.username}</span>
+          </div>
+          <div className="text-[0.6875rem] text-sand-400 ml-5 mb-2">
+            余额: {((user.quota - user.used_quota) / 500000).toFixed(1)}万 tokens
+          </div>
+          <div className="flex items-center gap-2 ml-5">
+            <button
+              onClick={() => {
+                const url = (localStorage.getItem("econ-agent-new-api-url") || "http://43.128.44.82:3000").replace(/\/v1$/, "");
+                window.open(`${url}/topup`, "_blank");
+              }}
+              className="flex items-center gap-1 text-[0.6875rem] text-[#c8956c] hover:text-[#b8855c] transition-colors"
+            >
+              <ExternalLink size={10} />
+              充值
+            </button>
+            <button
+              onClick={onLogout}
+              className="text-[0.6875rem] text-sand-400 hover:text-red-500 transition-colors"
+            >
+              退出
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Context menu */}
       {contextMenu && (

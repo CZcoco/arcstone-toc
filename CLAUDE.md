@@ -29,10 +29,21 @@
 
 ## 仓库与发布
 
-- GitHub 仓库：`https://github.com/CZcoco/econ-agent-build`
-- 当前项目目标：将稳定版本代码整理后推送到该仓库的 `main`
+- **ToC 版仓库**：`https://github.com/CZcoco/arcstone-toc.git`（当前活跃）
+- 原版仓库：`https://github.com/CZcoco/econ-agent-build`（v0.6.6 存档）
 - 当前可用 GitHub 账号：`Yonder-Solivagant`
-- 已确认：该账号对当前仓库具备操作权限
+
+## 开发环境
+
+**Python 环境**：使用 conda `miner-agent` 环境（`D:/miniconda/envs/miner-agent/python.exe`）
+
+```bash
+# 激活环境（Windows cmd）
+conda activate miner-agent
+
+# 或直接用绝对路径
+D:/miniconda/envs/miner-agent/python.exe run.py
+```
 
 ## 常用命令
 
@@ -40,7 +51,7 @@
 
 ```bash
 # 终端模式（无前端界面）
-python run.py [MODEL_NAME]  # MODEL_NAME: claude-sonnet, claude-opus, gpt
+python run.py [MODEL_NAME]  # MODEL_NAME: deepseek-chat（默认）, 或 New API 中的任意模型 ID
 
 # 仅启动 API 服务
 python run_api.py  # 端口从 ARCSTONE_ECON_API_PORT 读取或自动分配
@@ -51,10 +62,9 @@ npm install
 npm run dev          # Vite 开发服务器运行于 :5173
 npm run electron:dev # Electron 热重载模式
 
-# 生产构建
+# 前端构建
 cd frontend
-npm run build           # 构建前端资源
-npm run electron:build  # 构建 Electron 安装包
+npx tsc -b && npx vite build  # TypeScript 检查 + 构建
 
 # 后端可执行文件（Windows）
 build_backend.bat  # 需要 PyInstaller，输出 dist/backend/backend.exe
@@ -63,13 +73,10 @@ build_backend.bat  # 需要 PyInstaller，输出 dist/backend/backend.exe
 ### 环境配置
 
 ```bash
-# 复制并填写环境变量
-cp .env.example .env
-
-# 关键变量：
-# - ANTHROPIC_AUTH_TOKEN / ANTHROPIC_SUB_TOKEN / OPENAI_API_KEY
+# 关键变量（ToC 版）：
+# - ECON_USER_TOKEN（New API 用户 token，登录后自动设置）
+# - NEW_API_URL（默认 http://43.128.44.82:3000/v1）
 # - TAVILY_API_KEY（联网搜索）
-# - ALIBABA_CLOUD_ACCESS_KEY_ID + BAILIAN_WORKSPACE_ID（RAG 知识库）
 ```
 
 ## 关键文件位置
@@ -78,7 +85,7 @@ cp .env.example .env
 |---------|------|
 | Agent 工厂 | `src/agent/main.py` (`create_econ_agent()`) |
 | 系统提示词 | `src/agent/prompts.py` (ECON_SYSTEM_PROMPT + 4 个子 Agent) |
-| 模型配置 | `src/agent/config.py` (`MODEL_CONFIG`, `get_llm()`) |
+| 模型配置 | `src/agent/config.py` (`NEW_API_BASE_URL`, `get_llm()`) |
 | FastAPI 应用 | `src/api/app.py` (`AgentManager`, lifespan) |
 | API 路由 | `src/api/routes.py` |
 | 工具注册 | `src/tools/` |
@@ -105,13 +112,14 @@ cp .env.example .env
 python tests/test_frontend_ui.py
 ```
 
-## 模型配置
+## 模型配置（ToC 版）
 
-`src/agent/config.py` 中定义的可用模型：
-- `claude-sonnet` (默认模型，Anthropic 通过代理)
-- `claude-opus` (Anthropic 通过代理)
-- `claude-opus-plan`, `claude-sonnet-plan` (订阅端点)
-- `gpt` (GPT-5.4 通过代理)
+所有 LLM 调用统一走 **New API**（OpenAI 兼容格式），模型列表从 `/v1/models` 动态获取。
+
+- **New API 服务器**：`http://43.128.44.82:3000`
+- **认证**：`ECON_USER_TOKEN` 环境变量（`sk-...` 格式）
+- **当前可用模型**：`deepseek-chat`（默认）、`deepseek-reasoner`、`qwen-plus`、`qwen-turbo`
+- **添加模型**：在 New API 后台添加渠道，客户端自动出现
 
 ## 规则与准则
 
@@ -122,32 +130,39 @@ python tests/test_frontend_ui.py
 
 ## 开发注意
 
-- `ModelSelector` 应始终显示当前模型（即使只有一个可用），仅在有多个模型时显示下拉箭头
-- 设置面板保存 API Key 后自动刷新模型列表（通过 `modelRefreshKey` 触发）
+- `ModelSelector` 从 New API 动态获取模型列表，无硬编码。始终显示当前模型，多于 1 个时显示下拉箭头
+- 设置面板保存后自动刷新模型列表（通过 `modelRefreshKey` 触发）
 - **Clash TUN 模式兼容**：`run_api.py` 启动时会清理 `HTTP_PROXY`/`HTTPS_PROXY` 环境变量，避免本地连接被代理干扰
 - **生产版设置路径**：安装版优先读取 `%APPDATA%/econ-agent/data/settings.json`；开发环境 fallback 才是仓库内 `./data/settings.json`
-- **Claude API 线路**：`claude-opus` / `claude-sonnet` 使用 `ANTHROPIC_AUTH_TOKEN`，当前走 `https://apicn.ai`，实测 Anthropic 兼容接口可返回 200
-- **GPT 中转结论**：`https://chat.apiport.cc.cd/v1` 对应的 GPT 路线当前存在不稳定现象；`http://106.53.52.4` 及 `/v1` 当前不可用（80 拒绝连接，443 超时）
-- **GPT 稳定性兼容**：`gpt` 路线已在 `src/agent/config.py` 显式覆盖 `User-Agent: curl/8.0`，并注入 `timeout=120`、`max_retries=3`，以尽量贴近当前更稳定的 Claude API 调用形态，降低 OpenAI/Python 默认请求头带来的代理兼容问题
-- **最终用户 Python 运行时**：v0.6.x 延续 Python 3.12 embedded runtime 作为产品运行时本体；uv 仅负责向该解释器安装依赖，pip 为 fallback，不采用 uv-managed Python runtime 作为分发方案
+- **API 重试**：`stream.py` 对 `httpx.TimeoutException`/`HTTPStatusError` 自动重试 3 次（指数退避 1s/2s/4s）
+- **RAG 代理模式**：`src/tools/rag.py` 通过 HTTP 请求服务端代理，不再依赖客户端百炼 SDK
+- **最终用户 Python 运行时**：v0.6.x 延续 Python 3.12 embedded runtime 作为产品运行时本体；uv 仅负责向该解释器安装依赖，pip 为 fallback
 - **首启依赖策略**：`src/api/dependency_installer.py` 将 startup 依赖与 optional 扩展分层；用户首启只安装最小启动集，可选能力缺失时不应阻塞应用启动
 
+## ToC 改造进度
+
+详细改动记录见 `docs/TOC_CHANGELOG.md`，完整计划见 `docs/TOC_PLAN.md`。
+
+- [x] **Phase 0+1**：统一 New API 模式（已完成 2026-03-24）
+- [ ] **Phase 2**：App 内登录/注册/计费 UI
+- [ ] **Phase 3**：新手引导、论文模板、品牌更新
+
 ## 版本记录
+
+### v0.7.0-toc (2026-03-24)
+
+- **统一 New API 模式**：删除 8 个中转站硬编码，所有 LLM 调用走 `http://43.128.44.82:3000/v1`
+- **动态模型列表**：从 New API `/v1/models` 拉取，后台加模型客户端自动出现
+- **RAG 代理化**：知识库检索改为 HTTP 请求服务端代理，客户端无需百炼 SDK
+- **API 重试**：stream.py 加入 3 次指数退避重试
+- **启用 literature-agent**：恢复文献检索子 agent
+- **精简设置**：11 个 API Key → 2 个字段
+
+### v0.6.6 (2026-03-20)
+
+- 工作区面板增强、会话工作区绑定与并发隔离
 
 ### v0.6.0 (2026-03-15)
 
 - **在线安装版**：安装包从 ~410MB 降至 ~110MB
 - **uv 支持**：优先使用 uv 安装依赖（比 pip 快 10-100 倍），失败自动降级到 pip
-- **阿里云镜像**：默认使用 `https://mirrors.aliyun.com/pypi/simple/` 加速
-- **分阶段安装**：核心依赖必须成功，非核心依赖失败不阻塞启动
-
-### v0.5.12 (2026-03-14)
-
-- **UI 优化**：对话区域响应式宽度调整，小屏幕占满全宽、大屏幕限制最大宽度避免过宽
-- **版本号**：提升至 0.5.12
-
-### v0.5.11 (2026-03-14)
-
-- **模型调整**：移除 DeepSeek 和 Kimi API 支持，默认模型切换为 `claude-sonnet`
-- **Embedded Python 升级**：切换到 Python 3.12.10，完整包含数据科学依赖（pandas、numpy、matplotlib、scipy、statsmodels 等）
-- **安装包**：`Arcstone-econ Setup 0.5.11.exe` (约 410MB)，内置 `resources/python/python.exe` 和 `resources/backend/backend.exe`，用户无需预装 Python

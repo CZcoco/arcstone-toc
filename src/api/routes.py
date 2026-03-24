@@ -23,7 +23,9 @@ from pydantic import BaseModel
 
 from src.api.stream import stream_to_sse, _extract_text
 from src.agent.prompts import ECON_SYSTEM_PROMPT
-from src.settings import SETTINGS_SCHEMA, get_settings_for_api, update_settings
+from src.settings import SETTINGS_SCHEMA, get_settings_for_api, update_settings, load_settings, save_settings
+from src.api.auth import quick_start as auth_quick_start, get_user_info as auth_get_user_info, auto_login, AuthError
+from src.agent.main import DATA_DIR
 
 
 def _optional_import_error_message(feature: str, error: Exception) -> str:
@@ -196,6 +198,90 @@ class RenameRequest(BaseModel):
 @router.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# --- Auth ---
+
+class QuickStartRequest(BaseModel):
+    username: str
+    password: str
+
+
+@router.post("/auth/start")
+def auth_start(req: QuickStartRequest, request: Request):
+    """一步到位：自动注册（新用户）+ 登录 → 存凭证 → 返回用户信息"""
+    try:
+        result = auth_quick_start(req.username, req.password)
+        # 存 session + 凭证（用于自动登录）
+        os.environ["ECON_SESSION_COOKIE"] = result["session_cookie"]
+        os.environ["ECON_USER_ID"] = str(result["user_id"])
+        current = load_settings(DATA_DIR)
+        current["ECON_SESSION_COOKIE"] = result["session_cookie"]
+        current["ECON_USER_ID"] = str(result["user_id"])
+        current["ECON_USERNAME"] = req.username
+        current["ECON_PASSWORD"] = req.password
+        save_settings(DATA_DIR, current)
+        request.app.state.agent_manager.invalidate_cache()
+        return {"ok": True, "user": result["user"]}
+    except AuthError as e:
+        return JSONResponse(status_code=e.status_code, content={"ok": False, "message": e.message})
+
+
+@router.get("/auth/user")
+def auth_user_info():
+    """获取当前用户信息。session 过期时自动用 saved credentials 重新登录。"""
+    session_cookie = os.environ.get("ECON_SESSION_COOKIE", "")
+    user_id = os.environ.get("ECON_USER_ID", "")
+
+    if not session_cookie or not user_id:
+        # 尝试用保存的凭证自动登录
+        settings = load_settings(DATA_DIR)
+        username = settings.get("ECON_USERNAME", "")
+        password = settings.get("ECON_PASSWORD", "")
+        if username and password:
+            result = auto_login(username, password)
+            if result:
+                os.environ["ECON_SESSION_COOKIE"] = result["session_cookie"]
+                os.environ["ECON_USER_ID"] = str(result["user_id"])
+                save_settings(DATA_DIR, {**settings,
+                    "ECON_SESSION_COOKIE": result["session_cookie"],
+                    "ECON_USER_ID": str(result["user_id"]),
+                })
+                return {"ok": True, "user": result["user"]}
+        return JSONResponse(status_code=401, content={"ok": False, "message": "未登录"})
+
+    try:
+        user = auth_get_user_info(session_cookie, int(user_id))
+        return {"ok": True, "user": user}
+    except AuthError:
+        # session 过期，尝试自动重新登录
+        settings = load_settings(DATA_DIR)
+        username = settings.get("ECON_USERNAME", "")
+        password = settings.get("ECON_PASSWORD", "")
+        if username and password:
+            result = auto_login(username, password)
+            if result:
+                os.environ["ECON_SESSION_COOKIE"] = result["session_cookie"]
+                os.environ["ECON_USER_ID"] = str(result["user_id"])
+                save_settings(DATA_DIR, {**settings,
+                    "ECON_SESSION_COOKIE": result["session_cookie"],
+                    "ECON_USER_ID": str(result["user_id"]),
+                })
+                return {"ok": True, "user": result["user"]}
+        return JSONResponse(status_code=401, content={"ok": False, "message": "会话已过期"})
+
+
+@router.post("/auth/logout")
+def auth_logout():
+    os.environ.pop("ECON_SESSION_COOKIE", None)
+    os.environ.pop("ECON_USER_ID", None)
+    current = load_settings(DATA_DIR)
+    current.pop("ECON_SESSION_COOKIE", None)
+    current.pop("ECON_USER_ID", None)
+    current.pop("ECON_USERNAME", None)
+    current.pop("ECON_PASSWORD", None)
+    save_settings(DATA_DIR, current)
+    return {"ok": True}
 
 
 @router.get("/install/status")
