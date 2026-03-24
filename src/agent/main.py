@@ -50,7 +50,7 @@ DEFAULT_CHECKPOINT_PATH = os.path.join(DATA_DIR, "checkpoints.db")
 
 
 def create_econ_agent(
-    model_name: str = "claude-sonnet",
+    model_name: str = "deepseek-chat",
     db_path: str = DEFAULT_DB_PATH,
     checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
     store=None,
@@ -94,12 +94,12 @@ def create_econ_agent(
                 "system_prompt": TOPIC_AGENT_PROMPT,
                 "tools": [internet_search, fetch_website, bailian_rag, run_python],
             },
-        #     {
-        #         "name": "literature-agent",
-        #         "description": "用于搜索和整理学术文献、生成参考文献列表。调用时机：选题确定后，需要文献综述时；或需要验证某篇引用是否真实存在时。",
-        #         "system_prompt": LITERATURE_AGENT_PROMPT,
-        #         "tools": [internet_search, fetch_website, bailian_rag, run_python],
-        #     },
+            {
+                "name": "literature-agent",
+                "description": "用于搜索和整理学术文献、生成参考文献列表。调用时机：选题确定后，需要文献综述时；或需要验证某篇引用是否真实存在时。",
+                "system_prompt": LITERATURE_AGENT_PROMPT,
+                "tools": [internet_search, fetch_website, bailian_rag, run_python],
+            },
             {
                 "name": "empirical-agent",
                 "description": "用于实证分析：主要使用python进行数据清洗，stata skill执行回归、生成表格和图表。调用时机：数据和选题都确定后，需要执行计量经济学分析时。",

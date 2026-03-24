@@ -17,24 +17,10 @@ _env_backup: dict[str, str] = {}
 
 SETTINGS_SCHEMA = [
     {
-        "group": "模型 API",
+        "group": "服务配置",
         "keys": [
-            {"key": "ANTHROPIC_AUTH_TOKEN", "label": "Claude API（API额度）", "sensitive": True},
-            {"key": "ANTHROPIC_HON_TOKEN", "label": "Claude API2（API额度）", "sensitive": True},
-            {"key": "ANTHROPIC_SUB_TOKEN", "label": "Claude Plan（订阅）", "sensitive": True},
-            {"key": "OPENAI_API_KEY", "label": "GPT-5.4", "sensitive": True},
-            {"key": "MODEL_API_KEY", "label": "应急模型", "sensitive": True},
-            {"key": "TAVILY_API_KEY", "label": "Tavily 搜索", "sensitive": True},
-            {"key": "MINERU_API_KEY", "label": "MinerU PDF 解析", "sensitive": True},
-            {"key": "DASHSCOPE_API_KEY", "label": "阿里云DashScope（记忆语义检索）", "sensitive": True},
-        ],
-    },
-    {
-        "group": "百炼知识库",
-        "keys": [
-            {"key": "ALIBABA_CLOUD_ACCESS_KEY_ID", "label": "阿里云 AccessKey ID", "sensitive": True},
-            {"key": "ALIBABA_CLOUD_ACCESS_KEY_SECRET", "label": "阿里云 AccessKey Secret", "sensitive": True},
-            {"key": "BAILIAN_WORKSPACE_ID", "label": "业务空间 ID", "sensitive": False},
+            {"key": "NEW_API_URL", "label": "服务器地址", "sensitive": False},
+            {"key": "TAVILY_API_KEY", "label": "Tavily 搜索 API Key", "sensitive": True},
         ],
     },
 ]

@@ -28,7 +28,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [modelRefreshKey, setModelRefreshKey] = useState(0);
-  const [model, setModel] = useState(() => localStorage.getItem(STORAGE_KEY) || "gpt");
+  const [model, setModel] = useState(() => localStorage.getItem(STORAGE_KEY) || "deepseek-chat");
   const { messages, isStreaming, sendMessage, resendMessage, stopStreaming, loadHistory, clearMessages } =
     useChat(threadId);
   const [uploadingCount, setUploadingCount] = useState(0);

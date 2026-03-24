@@ -165,7 +165,7 @@ def count_memory_files(store) -> int:
 
 
 def main():
-    model_name = sys.argv[1] if len(sys.argv) > 1 else "claude-sonnet"
+    model_name = sys.argv[1] if len(sys.argv) > 1 else "deepseek-chat"
     os.environ["CURRENT_MODEL"] = model_name
 
     print(f"{BOLD}Arcstone-econ{RESET}")

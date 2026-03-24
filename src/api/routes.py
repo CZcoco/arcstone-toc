@@ -139,7 +139,7 @@ _SSE_HEADERS = {
 }
 
 
-def _get_agent(request: Request, model: str = "claude-sonnet", workspace_dir: str | None = None):
+def _get_agent(request: Request, model: str = "deepseek-chat", workspace_dir: str | None = None):
     """从 AgentManager 获取指定模型的 agent"""
     return request.app.state.agent_manager.get(model, workspace_dir=workspace_dir)
 
@@ -160,7 +160,7 @@ class AttachmentMeta(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     thread_id: str
-    model: Optional[str] = "claude-sonnet"
+    model: Optional[str] = "deepseek-chat"
     image_ids: list[str] = []
     file_summaries: list[str] = []
     attachments: list[AttachmentMeta] = []
@@ -170,7 +170,7 @@ class ResendRequest(BaseModel):
     message: str
     thread_id: str
     message_index: int
-    model: Optional[str] = "claude-sonnet"
+    model: Optional[str] = "deepseek-chat"
 
 
 class CancelRequest(BaseModel):
@@ -183,7 +183,7 @@ class SessionNewResponse(BaseModel):
 
 class ArchiveRequest(BaseModel):
     thread_id: str
-    model: Optional[str] = "claude-sonnet"
+    model: Optional[str] = "deepseek-chat"
 
 
 class RenameRequest(BaseModel):
@@ -243,7 +243,7 @@ def chat_stream(req: ChatRequest, request: Request):
         stream_to_sse(agent, req.message, config,
                       images=images,
                       file_summaries=req.file_summaries,
-                      model=req.model or "claude-sonnet",
+                      model=req.model or "deepseek-chat",
                       attachments=[a.model_dump() for a in req.attachments],
                       workspace_path=ws_path),
         media_type="text/event-stream",
@@ -1148,15 +1148,13 @@ def kb_delete(req: KBDeleteRequest, request: Request):
 
 @router.get("/kb/rag/config")
 def kb_rag_config_get():
-    from src.tools.rag import get_rag_kb_configs, _init_default_config
-    _init_default_config()
-    return {"configs": get_rag_kb_configs()}
+    # 知识库配置已迁移到服务端 RAG 代理
+    return {"configs": []}
 
 
 @router.post("/kb/rag/config")
 def kb_rag_config_set(req: KBRagConfigRequest):
-    from src.tools.rag import set_rag_kb_configs
-    set_rag_kb_configs(req.configs)
+    # 知识库配置已迁移到服务端 RAG 代理
     return {"ok": True}
 
 
@@ -1186,26 +1184,9 @@ def settings_update(req: SettingsUpdateRequest, request: Request):
     if not changed:
         return result
 
-    # API Key 变更 → 清 agent 缓存
-    api_key_keys = {
-        "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_HON_TOKEN", "ANTHROPIC_SUB_TOKEN",
-        "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "MODEL_API_KEY",
-        "DASHSCOPE_API_KEY", "TAVILY_API_KEY", "MINERU_API_KEY",
-    }
-    if changed & api_key_keys:
+    # 配置变更 → 清 agent 缓存
+    if changed & {"NEW_API_URL", "TAVILY_API_KEY"}:
         request.app.state.agent_manager.invalidate_cache()
-
-    # 百炼 ID 变更 → 重新实例化 KBManager
-    bailian_keys = {"BAILIAN_WORKSPACE_ID", "ALIBABA_CLOUD_ACCESS_KEY_ID", "ALIBABA_CLOUD_ACCESS_KEY_SECRET"}
-    if changed & bailian_keys:
-        if os.environ.get("BAILIAN_WORKSPACE_ID") and os.environ.get("ALIBABA_CLOUD_ACCESS_KEY_ID"):
-            try:
-                from src.tools.kb_uploader import BailianKBManager
-                request.app.state.kb_manager = BailianKBManager()
-            except Exception:
-                request.app.state.kb_manager = None
-        else:
-            request.app.state.kb_manager = None
 
     return result
 

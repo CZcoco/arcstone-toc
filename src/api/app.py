@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from src.agent.main import create_econ_agent, DATA_DIR, SKILLS_DIR, DEFAULT_WORKSPACE_DIR
-from src.agent.config import MODEL_CONFIG
+from src.agent.config import NEW_API_BASE_URL
 from src.store import SqliteStore
 
 
@@ -60,7 +60,7 @@ class AgentManager:
         self._custom_prompt: str | None = None
         self._workspace_dir: str = workspace_dir
 
-    def get(self, model_name: str = "claude-sonnet", workspace_dir: str | None = None):
+    def get(self, model_name: str = "deepseek-chat", workspace_dir: str | None = None):
         ws = workspace_dir or self._workspace_dir
         cache_key = (model_name, ws)
         with self._lock:
@@ -94,17 +94,30 @@ class AgentManager:
             self._agents.clear()
 
     def available_models(self) -> list[dict]:
-        """返回可用模型列表（有 API Key 的才算可用）"""
-        models = []
-        for name, cfg in MODEL_CONFIG.items():
-            has_key = bool(os.getenv(cfg["env_key"]))
-            models.append({
-                "id": name,
-                "name": name,
-                "model": cfg["model"],
-                "available": has_key,
-            })
-        return models
+        """从 New API 动态获取可用模型列表"""
+        import httpx
+        token = os.environ.get("ECON_USER_TOKEN", "")
+        if not token:
+            return []
+        try:
+            resp = httpx.get(
+                f"{NEW_API_BASE_URL}/models",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            data = resp.json().get("data", [])
+            return [
+                {
+                    "id": m["id"],
+                    "name": m.get("name", m["id"]),
+                    "model": m["id"],
+                    "available": True,
+                }
+                for m in data
+            ]
+        except Exception:
+            return []
 
 
 @asynccontextmanager
@@ -363,17 +376,8 @@ async def lifespan(app: FastAPI):
     app.state.store = store
     app.state.checkpointer = checkpointer
 
-    # 初始化百炼知识库管理器（可选，需要环境变量）
-    if os.environ.get("BAILIAN_WORKSPACE_ID") and os.environ.get("ALIBABA_CLOUD_ACCESS_KEY_ID"):
-        try:
-            from src.tools.kb_uploader import BailianKBManager
-            app.state.kb_manager = BailianKBManager()
-            logging.getLogger(__name__).info("BailianKBManager initialized")
-        except Exception as e:
-            logging.getLogger(__name__).warning("Failed to init BailianKBManager: %s", e)
-            app.state.kb_manager = None
-    else:
-        app.state.kb_manager = None
+    # 知识库管理已迁移到服务端 RAG 代理
+    app.state.kb_manager = None
 
     yield
 

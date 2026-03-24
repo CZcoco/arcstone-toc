@@ -12,7 +12,10 @@ import os
 import queue
 import threading
 import logging
+import time
 from typing import Generator
+
+import httpx
 
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 
@@ -42,6 +45,8 @@ _TOOL_ERROR_MARKERS = (
     "执行失败", "执行超时", "未找到", "Traceback",
 )
 
+MAX_API_RETRIES = 3
+
 
 def sse_event(event_type: str, data: dict) -> str:
     """格式化单条 SSE 事件"""
@@ -51,7 +56,7 @@ def sse_event(event_type: str, data: dict) -> str:
 def _run_agent(agent, user_input: str, config: dict, q: queue.Queue, detached: threading.Event,
                cancelled: threading.Event,
                images: list[str] | None = None, file_summaries: list[str] | None = None,
-               model: str = "claude-sonnet", attachments: list[dict] | None = None,
+               model: str = "deepseek-chat", attachments: list[dict] | None = None,
                workspace_path: str | None = None):
     """在独立线程中执行 agent.stream()，将 SSE 事件推入 queue。
 
@@ -100,80 +105,93 @@ def _run_agent(agent, user_input: str, config: dict, q: queue.Queue, detached: t
             msg_metadata["attachments"] = attachments
         user_msg = HumanMessage(content=content, metadata=msg_metadata)
 
-        for stream_mode, data in agent.stream(
-            {"messages": [user_msg]},
-            config=config,
-            stream_mode=["messages", "updates"],
-        ):
-            if cancelled.is_set():
-                thread_id = config.get("configurable", {}).get("thread_id", "?")
-                logger.info("Agent cancelled by user (thread_id=%s)", thread_id)
-                emit(sse_event("done", {}))
-                return
+        for attempt in range(MAX_API_RETRIES):
+            try:
+                for stream_mode, data in agent.stream(
+                    {"messages": [user_msg]},
+                    config=config,
+                    stream_mode=["messages", "updates"],
+                ):
+                    if cancelled.is_set():
+                        thread_id = config.get("configurable", {}).get("thread_id", "?")
+                        logger.info("Agent cancelled by user (thread_id=%s)", thread_id)
+                        emit(sse_event("done", {}))
+                        return
 
-            if stream_mode == "messages":
-                token, metadata = data
+                    if stream_mode == "messages":
+                        token, metadata = data
 
-                if isinstance(token, AIMessageChunk):
-                    if token.tool_call_chunks:
-                        for tc in token.tool_call_chunks:
-                            call_id = tc.get("id") or tc.get("index", "")
-                            if call_id and call_id not in current_tool_calls:
-                                current_tool_calls[call_id] = True
-                                emit(sse_event("thinking", {}))
-                    elif hasattr(token, "content") and token.content:
-                        text = _extract_text(token.content)
-                        if text:
-                            emit(sse_event("text_chunk", {"content": text}))
+                        if isinstance(token, AIMessageChunk):
+                            if token.tool_call_chunks:
+                                for tc in token.tool_call_chunks:
+                                    call_id = tc.get("id") or tc.get("index", "")
+                                    if call_id and call_id not in current_tool_calls:
+                                        current_tool_calls[call_id] = True
+                                        emit(sse_event("thinking", {}))
+                            elif hasattr(token, "content") and token.content:
+                                text = _extract_text(token.content)
+                                if text:
+                                    emit(sse_event("text_chunk", {"content": text}))
 
-            elif stream_mode == "updates":
-                if not isinstance(data, dict):
-                    continue
-                for node_name, update in data.items():
-                    if not isinstance(update, dict):
-                        continue
-                    if node_name == "tools":
-                        messages = update.get("messages", [])
-                        for msg in messages:
-                            if isinstance(msg, ToolMessage):
-                                content = _extract_text(msg.content)
-                                # 连续工具失败熔断
-                                is_error = any(m in content for m in _TOOL_ERROR_MARKERS)
-                                if is_error:
-                                    consecutive_tool_failures += 1
-                                    logger.warning(
-                                        "Tool call failed (%d/%d): %s → %s",
-                                        consecutive_tool_failures, _MAX_CONSECUTIVE_TOOL_FAILURES,
-                                        msg.name, content[:200],
-                                    )
-                                    if consecutive_tool_failures >= _MAX_CONSECUTIVE_TOOL_FAILURES:
+                    elif stream_mode == "updates":
+                        if not isinstance(data, dict):
+                            continue
+                        for node_name, update in data.items():
+                            if not isinstance(update, dict):
+                                continue
+                            if node_name == "tools":
+                                messages = update.get("messages", [])
+                                for msg in messages:
+                                    if isinstance(msg, ToolMessage):
+                                        content = _extract_text(msg.content)
+                                        # 连续工具失败熔断
+                                        is_error = any(m in content for m in _TOOL_ERROR_MARKERS)
+                                        if is_error:
+                                            consecutive_tool_failures += 1
+                                            logger.warning(
+                                                "Tool call failed (%d/%d): %s → %s",
+                                                consecutive_tool_failures, _MAX_CONSECUTIVE_TOOL_FAILURES,
+                                                msg.name, content[:200],
+                                            )
+                                            if consecutive_tool_failures >= _MAX_CONSECUTIVE_TOOL_FAILURES:
+                                                emit(sse_event("tool_result", {
+                                                    "id": msg.tool_call_id,
+                                                    "name": msg.name,
+                                                    "content": content,
+                                                }))
+                                                emit(sse_event("error", {
+                                                    "message": f"连续 {_MAX_CONSECUTIVE_TOOL_FAILURES} 次工具调用失败，已自动停止。请检查模型或重试。",
+                                                }))
+                                                emit(sse_event("done", {}))
+                                                return
+                                        else:
+                                            consecutive_tool_failures = 0
                                         emit(sse_event("tool_result", {
                                             "id": msg.tool_call_id,
                                             "name": msg.name,
                                             "content": content,
                                         }))
-                                        emit(sse_event("error", {
-                                            "message": f"连续 {_MAX_CONSECUTIVE_TOOL_FAILURES} 次工具调用失败，已自动停止。请检查模型或重试。",
-                                        }))
-                                        emit(sse_event("done", {}))
-                                        return
-                                else:
-                                    consecutive_tool_failures = 0
-                                emit(sse_event("tool_result", {
-                                    "id": msg.tool_call_id,
-                                    "name": msg.name,
-                                    "content": content,
-                                }))
-                    elif node_name in ("agent", "model"):
-                        messages = update.get("messages", [])
-                        for msg in messages:
-                            if isinstance(msg, AIMessage) and msg.tool_calls:
-                                for tc in msg.tool_calls:
-                                    emit(sse_event("tool_call", {
-                                        "id": tc.get("id", ""),
-                                        "name": tc["name"],
-                                        "args": tc["args"],
-                                    }))
+                            elif node_name in ("agent", "model"):
+                                messages = update.get("messages", [])
+                                for msg in messages:
+                                    if isinstance(msg, AIMessage) and msg.tool_calls:
+                                        for tc in msg.tool_calls:
+                                            emit(sse_event("tool_call", {
+                                                "id": tc.get("id", ""),
+                                                "name": tc["name"],
+                                                "args": tc["args"],
+                                            }))
+
+                break  # 正常结束，跳出重试循环
+            except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
+                if attempt < MAX_API_RETRIES - 1:
+                    wait = 2 ** attempt
+                    logger.warning("API error (attempt %d/%d), retrying in %ds: %s",
+                                  attempt + 1, MAX_API_RETRIES, wait, e)
+                    emit(sse_event("error", {"message": f"API 暂时不可用，{wait}秒后自动重试..."}))
+                    time.sleep(wait)
+                else:
+                    raise
 
         emit(sse_event("done", {}))
     except Exception as e:
@@ -198,7 +216,7 @@ def cancel_stream(thread_id: str) -> bool:
 def stream_to_sse(agent, user_input: str, config: dict,
                   images: list[str] | None = None,
                   file_summaries: list[str] | None = None,
-                  model: str = "claude-sonnet",
+                  model: str = "deepseek-chat",
                   attachments: list[dict] | None = None,
                   workspace_path: str | None = None) -> Generator[str, None, None]:
     """将 agent.stream() 转换为 SSE 事件流。
