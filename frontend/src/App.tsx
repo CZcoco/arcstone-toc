@@ -1,56 +1,44 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import { useChat } from "@/hooks/useChat";
 import { useAuth } from "@/hooks/useAuth";
-import { createSession, getSessionHistory, setWorkspace, uploadPdfs, uploadImage, uploadExcel, setKBRagConfig } from "@/lib/api";
+import { useTopup } from "@/hooks/useTopup";
+import { createSession, getSessionHistory, setWorkspace, uploadPdfs, uploadImage, uploadExcel } from "@/lib/api";
+import type { TemplateCard } from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
 import ChatMessage from "@/components/ChatMessage";
 import ChatInput from "@/components/ChatInput";
 import type { Attachment } from "@/components/ChatInput";
 import ModelSelector from "@/components/ModelSelector";
-import type { KBConfig } from "@/types";
-
+import WelcomeScreen from "@/components/WelcomeScreen";
+import RightPanel from "@/components/RightPanel";
 const AuthScreen = lazy(() => import("@/components/AuthScreen"));
-const MemoryPanel = lazy(() => import("@/components/MemoryPanel"));
-const KnowledgeBasePanel = lazy(() => import("@/components/KnowledgeBasePanel"));
-const SystemPromptPanel = lazy(() => import("@/components/SystemPromptPanel"));
-const SkillPanel = lazy(() => import("@/components/SkillPanel"));
-const SettingsPanel = lazy(() => import("@/components/SettingsPanel"));
-const WorkspacePanel = lazy(() => import("@/components/WorkspacePanel"));
+const OnboardingModal = lazy(() => import("@/components/OnboardingModal"));
 
 const STORAGE_KEY = "arcstone-econ-model";
-const KB_STORAGE_KEY = "arcstone-econ-kb-configs";
 const MAX_ATTACHMENTS = 100;
 
 export default function App() {
   const { user, loading: authLoading, start, logout, refreshBalance } = useAuth();
+  const { openTopup } = useTopup(refreshBalance);
   const [threadId, setThreadId] = useState(() => crypto.randomUUID());
-  const [memoryOpen, setMemoryOpen] = useState(false);
-  const [kbOpen, setKBOpen] = useState(false);
-  const [promptOpen, setPromptOpen] = useState(false);
-  const [skillOpen, setSkillOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [workspaceOpen, setWorkspaceOpen] = useState(false);
-  const [modelRefreshKey, setModelRefreshKey] = useState(0);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(() => {
+    const saved = localStorage.getItem("econ-agent-right-panel-collapsed");
+    return saved === "true"; // 默认展开
+  });
+  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem("econ-agent-onboarding-done"));
+  const [modelRefreshKey] = useState(0);
   const [model, setModel] = useState(() => localStorage.getItem(STORAGE_KEY) || "deepseek-chat");
   const { messages, isStreaming, sendMessage, resendMessage, stopStreaming, loadHistory, clearMessages } =
     useChat(threadId);
+  const [modeTemplates, setModeTemplates] = useState<TemplateCard[] | undefined>();
   const [uploadingCount, setUploadingCount] = useState(0);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
 
-  // App 启动时，把 localStorage 里的知识库配置同步到后端 RAG
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(KB_STORAGE_KEY);
-      if (raw) {
-        const configs: KBConfig[] = JSON.parse(raw);
-        if (configs.length > 0) {
-          setKBRagConfig(configs).catch(() => {});
-        }
-      }
-    } catch { /* ignore */ }
+  const handleModeChange = useCallback((_modeId: string, templates?: TemplateCard[]) => {
+    setModeTemplates(templates);
   }, []);
 
   // 持久化模型选择
@@ -61,10 +49,6 @@ export default function App() {
     } else {
       localStorage.removeItem(STORAGE_KEY);
     }
-  }, []);
-
-  const handleSettingsSaved = useCallback(async (_changedKeys: string[]) => {
-    setModelRefreshKey((k) => k + 1);
   }, []);
 
   // 检测用户是否主动上滚：距底部超过 80px 就认为用户在看历史
@@ -79,17 +63,26 @@ export default function App() {
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
-  // 只在用户没有上滚时自动跟随底部
+  // 只在用户没有上滚时自动跟随底部（仅在流式结束时平滑滚动）
   useEffect(() => {
-    if (!userScrolledUpRef.current && scrollRef.current) {
-      const el = scrollRef.current;
-      if (isStreaming) {
-        el.scrollTop = el.scrollHeight;
-      } else {
-        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-      }
+    if (userScrolledUpRef.current || !scrollRef.current) return;
+    const el = scrollRef.current;
+    // 流式中不强制滚动，让内容自然增长
+    if (!isStreaming) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     }
   }, [messages, isStreaming]);
+
+  // 流式结束后刷新余额 + 工作区文件列表
+  const prevStreamingRef = useRef(false);
+  const [wsRefreshKey, setWsRefreshKey] = useState(0);
+  useEffect(() => {
+    if (prevStreamingRef.current && !isStreaming) {
+      refreshBalance();
+      setWsRefreshKey(k => k + 1);
+    }
+    prevStreamingRef.current = isStreaming;
+  }, [isStreaming, refreshBalance]);
 
   // 用户发新消息时，重置滚动状态，强制回到底部
   const handleSend = useCallback(
@@ -115,8 +108,6 @@ export default function App() {
 
       sendMessage(content, model, imageIds, fileSummaries, attachmentMetas);
       setAttachments([]);
-      // 延迟刷新余额（等 API 调用完成）
-      setTimeout(() => refreshBalance(), 3000);
     },
     [sendMessage, model, refreshBalance]
   );
@@ -246,14 +237,11 @@ export default function App() {
         onNewSession={handleNewSession}
         onSelectSession={handleSelectSession}
         onDeleteSession={handleDeleteSession}
-        onOpenMemory={() => setMemoryOpen(true)}
-        onOpenKB={() => setKBOpen(true)}
-        onOpenSkills={() => setSkillOpen(true)}
-        onOpenSystemPrompt={() => setPromptOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onOpenWorkspace={() => setWorkspaceOpen(true)}
         user={user}
         onLogout={logout}
+        onTopup={openTopup}
+        onRefreshBalance={refreshBalance}
+        onModeChange={handleModeChange}
       />
 
       {/* Main chat area */}
@@ -261,25 +249,7 @@ export default function App() {
         {/* Messages */}
         <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full animate-fade-in">
-              <div className="mb-8">
-                <div className="w-12 h-12 relative">
-                  <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M24 6L38 38H10L24 6Z" fill="none" stroke="#c8956c" strokeWidth="1.5" strokeLinejoin="round" />
-                    <path d="M24 16L32 38H16L24 16Z" fill="#c8956c" fillOpacity="0.12" stroke="#c8956c" strokeWidth="1" strokeLinejoin="round" />
-                    <circle cx="24" cy="28" r="2" fill="#c8956c" fillOpacity="0.5" />
-                  </svg>
-                </div>
-              </div>
-              <h1 className="text-lg font-medium text-sand-800 tracking-tight mb-2">
-                Arcstone-econ
-              </h1>
-              <p className="text-sm text-sand-500 max-w-xs text-center leading-relaxed">
-                <span className="text-sand-400">
-                  知识检索 / 网络搜索 / 代码运行 / 持久记忆
-                </span>
-              </p>
-            </div>
+            <WelcomeScreen onSendMessage={(msg) => handleSend(msg)} username={user?.username} templates={modeTemplates} />
           ) : (
             <div className="w-full max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
               {messages.map((msg) => (
@@ -316,13 +286,24 @@ export default function App() {
         />
       </main>
 
+      <RightPanel
+        refreshKey={wsRefreshKey}
+        collapsed={rightPanelCollapsed}
+        onToggle={() => setRightPanelCollapsed(prev => {
+          const next = !prev;
+          localStorage.setItem("econ-agent-right-panel-collapsed", String(next));
+          return next;
+        })}
+        threadId={threadId}
+      />
+
       <Suspense>
-        {memoryOpen && <MemoryPanel open={memoryOpen} onClose={() => setMemoryOpen(false)} />}
-        {kbOpen && <KnowledgeBasePanel open={kbOpen} onClose={() => setKBOpen(false)} />}
-        {promptOpen && <SystemPromptPanel open={promptOpen} onClose={() => setPromptOpen(false)} />}
-        {skillOpen && <SkillPanel open={skillOpen} onClose={() => setSkillOpen(false)} />}
-        {settingsOpen && <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} onSaved={handleSettingsSaved} />}
-        {workspaceOpen && <WorkspacePanel open={workspaceOpen} onClose={() => setWorkspaceOpen(false)} threadId={threadId} />}
+        {showOnboarding && (
+          <OnboardingModal
+            open={showOnboarding}
+            onClose={() => setShowOnboarding(false)}
+          />
+        )}
       </Suspense>
     </div>
   );

@@ -94,8 +94,9 @@ class AgentManager:
             self._agents.clear()
 
     def available_models(self) -> list[dict]:
-        """从 New API 动态获取可用模型列表"""
+        """从 New API 动态获取可用模型列表，并按白名单过滤"""
         import httpx
+        from src.api.model_whitelist import get_whitelist
         token = os.environ.get("ECON_USER_TOKEN", "")
         if not token:
             return []
@@ -107,7 +108,7 @@ class AgentManager:
             )
             resp.raise_for_status()
             data = resp.json().get("data", [])
-            return [
+            result = [
                 {
                     "id": m["id"],
                     "name": m.get("name", m["id"]),
@@ -116,6 +117,11 @@ class AgentManager:
                 }
                 for m in data
             ]
+            # 按白名单过滤
+            wl = get_whitelist()
+            if wl:
+                result = [m for m in result if m["id"] in wl]
+            return result
         except Exception:
             return []
 
@@ -170,8 +176,25 @@ async def lifespan(app: FastAPI):
     from src.memory_search import set_global_search_engine
     set_global_search_engine(store.search_engine)
 
-    # settings.json 覆盖 os.environ（在 load_dotenv 之后，backfill 之前，确保 DASHSCOPE_API_KEY 可用）
+    # settings.json 覆盖 os.environ
     apply_settings_to_environ(DATA_DIR)
+
+    # 从 VPS 拉取 Tavily/MinerU 等服务的 key 池
+    from src.api.key_pool import load_keys
+    threading.Thread(target=load_keys, daemon=True).start()
+
+    # 从 VPS 拉取可用模式列表
+    from src.api.modes import load_modes
+    threading.Thread(target=load_modes, daemon=True).start()
+
+    # 从 VPS 拉取模型白名单
+    from src.api.model_whitelist import load_whitelist
+    threading.Thread(target=load_whitelist, daemon=True).start()
+
+    # 从 VPS 同步最新技能
+    from src.api.skills_sync import sync_skills
+    from src.agent.main import SKILLS_DIR as _skills_dir
+    threading.Thread(target=sync_skills, args=(_skills_dir,), daemon=True).start()
 
     # 后台线程索引已有记忆，不阻塞启动
     def _backfill_in_background():

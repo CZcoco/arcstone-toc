@@ -96,19 +96,3 @@ export interface MemoryItem {
   key: string;
   updated_at: string;
 }
-
-// --- 知识库 ---
-
-export interface KBDocument {
-  id: string;
-  name: string;
-  size: number;
-  status: string;
-  modified_at: number;
-}
-
-export interface KBConfig {
-  index_id: string;
-  name: string;
-  description: string;
-}

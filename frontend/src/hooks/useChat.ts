@@ -147,6 +147,16 @@ export function useChat(threadId: string) {
       updateAiMessage(aiId, { content: fullText, segments: [...segments] });
     }
 
+    /** 流式中断时，把所有还在 running 的工具调用标记为中断 */
+    function markToolCallsAborted() {
+      for (const tc of toolCallMap.values()) {
+        if (tc.status === "running") {
+          tc.status = "done";
+          tc.result = tc.result || "(已中断)";
+        }
+      }
+    }
+
     (async () => {
       try {
         await fetchEventSource(url, {
@@ -219,6 +229,7 @@ export function useChat(threadId: string) {
                 break;
               }
               case "error": {
+                markToolCallsAborted();
                 const fullText = segments
                   .filter((s) => s.type === "text")
                   .map((s) => (s as any).content)
@@ -238,6 +249,7 @@ export function useChat(threadId: string) {
 
           onclose() {
             if (currentAiIdRef.current === aiId) {
+              markToolCallsAborted();
               flushUI();
               updateAiMessage(aiId, { isStreaming: false });
               setIsStreaming(false);
@@ -247,6 +259,7 @@ export function useChat(threadId: string) {
           },
 
           onerror(err) {
+            markToolCallsAborted();
             flushUI();
             const patch: Partial<Message> = { isStreaming: false };
             if (segments.length === 0) patch.content = "连接中断";
@@ -260,8 +273,10 @@ export function useChat(threadId: string) {
           openWhenHidden: true,
         });
       } catch (e: any) {
+        markToolCallsAborted();
         if (e.name === "AbortError") {
-          // ok
+          flushUI();
+          updateAiMessage(aiId, { isStreaming: false });
         } else if (currentAiIdRef.current === aiId) {
           const patch: Partial<Message> = { isStreaming: false };
           if (segments.length === 0) patch.content = "连接失败，请检查后端服务是否启动。";

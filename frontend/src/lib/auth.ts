@@ -24,9 +24,10 @@ export async function quickStart(
 }
 
 /** 获取当前用户信息（后端自动处理 session 过期重登录） */
-export async function getUserInfo(): Promise<UserInfo | null> {
+export async function getUserInfo(refresh = false): Promise<UserInfo | null> {
   try {
-    const res = await fetch(`${BASE_URL}/auth/user`);
+    const url = refresh ? `${BASE_URL}/auth/user?refresh=true` : `${BASE_URL}/auth/user`;
+    const res = await fetch(url);
     if (res.status === 401) return null;
     const data = await res.json();
     if (!data.ok) return null;

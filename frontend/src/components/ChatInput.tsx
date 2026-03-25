@@ -224,13 +224,14 @@ export default function ChatInput({ onSend, onStop, isStreaming, disabled, model
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={!canAttachMore}
-                className={`flex items-center justify-center w-7 h-7 rounded-lg transition-colors
+                className={`flex items-center gap-1 px-2 h-7 rounded-lg transition-colors
                   ${isUploading ? "text-sand-400" :
                     canAttachMore ? "text-sand-400 hover:text-sand-600 hover:bg-sand-200/50" :
                     "text-sand-300 cursor-default"}`}
                 title={isUploading ? "上传中..." : `上传文件（PDF/Word/MD/图片/Excel，每次最多 ${MAX_UPLOAD_BATCH} 个）`}
               >
                 {isUploading ? <Loader2 size={15} className="animate-spin" /> : <Paperclip size={15} />}
+                <span className="text-[0.6875rem]">上传文件</span>
               </button>
             </div>
 

@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef } from "react";
-import { Plus, MessageSquare, BookOpen, Database, PanelLeftClose, PanelLeftOpen, Pencil, Trash2, ScrollText, Wand2, Settings2, FolderOpen, LogOut, User, ExternalLink } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Plus, MessageSquare, PanelLeftClose, PanelLeftOpen, Pencil, Trash2, LogOut, User, ExternalLink, RefreshCw } from "lucide-react";
 import type { Session } from "@/types";
+import type { TemplateCard } from "@/lib/api";
 import { listSessions, renameSession, deleteSession } from "@/lib/api";
+import ModeSelector from "@/components/ModeSelector";
 
 function stripMarkdown(text: string): string {
   return text
@@ -26,14 +28,11 @@ interface SidebarProps {
   onNewSession: () => void;
   onSelectSession: (threadId: string) => void;
   onDeleteSession: (threadId: string) => void;
-  onOpenMemory: () => void;
-  onOpenKB: () => void;
-  onOpenSkills: () => void;
-  onOpenSystemPrompt: () => void;
-  onOpenSettings: () => void;
-  onOpenWorkspace: () => void;
   user?: { username: string; quota: number; used_quota: number; group: string } | null;
   onLogout?: () => void;
+  onTopup?: () => void;
+  onRefreshBalance?: () => void;
+  onModeChange?: (modeId: string, templates?: TemplateCard[]) => void;
 }
 
 interface ContextMenu {
@@ -47,17 +46,47 @@ export default function Sidebar({
   onNewSession,
   onSelectSession,
   onDeleteSession,
-  onOpenMemory,
-  onOpenKB,
-  onOpenSkills,
-  onOpenSystemPrompt,
-  onOpenSettings,
-  onOpenWorkspace,
   user,
   onLogout,
+  onTopup,
+  onRefreshBalance,
+  onModeChange,
 }: SidebarProps) {
+  const SIDEBAR_WIDTH_KEY = "econ-agent-sidebar-width";
+  const SIDEBAR_DEFAULT = 240;
+  const SIDEBAR_MIN = 180;
+  const SIDEBAR_MAX = 400;
+
   const [sessions, setSessions] = useState<Session[]>([]);
   const [collapsed, setCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
+    return saved ? Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Number(saved))) : SIDEBAR_DEFAULT;
+  });
+
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = sidebarWidth;
+    const onMove = (ev: MouseEvent) => {
+      const newW = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, startW + (ev.clientX - startX)));
+      setSidebarWidth(newW);
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+  }, [sidebarWidth]);
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -156,48 +185,6 @@ export default function Sidebar({
           <Plus size={16} />
         </button>
         <div className="flex-1" />
-        <button
-          onClick={onOpenSystemPrompt}
-          className="p-2 rounded-lg text-sand-400 hover:text-sand-600 hover:bg-sand-200/50 transition-colors"
-          title="系统提示词"
-        >
-          <ScrollText size={16} />
-        </button>
-        <button
-          onClick={onOpenKB}
-          className="p-2 rounded-lg text-sand-400 hover:text-sand-600 hover:bg-sand-200/50 transition-colors"
-          title="知识库"
-        >
-          <Database size={16} />
-        </button>
-        <button
-          onClick={onOpenSkills}
-          className="p-2 rounded-lg text-sand-400 hover:text-sand-600 hover:bg-sand-200/50 transition-colors"
-          title="技能"
-        >
-          <Wand2 size={16} />
-        </button>
-        <button
-          onClick={onOpenMemory}
-          className="p-2 rounded-lg text-sand-400 hover:text-sand-600 hover:bg-sand-200/50 transition-colors"
-          title="记忆"
-        >
-          <BookOpen size={16} />
-        </button>
-        <button
-          onClick={onOpenWorkspace}
-          className="p-2 rounded-lg text-sand-400 hover:text-sand-600 hover:bg-sand-200/50 transition-colors"
-          title="工作区"
-        >
-          <FolderOpen size={16} />
-        </button>
-        <button
-          onClick={onOpenSettings}
-          className="p-2 rounded-lg text-sand-400 hover:text-sand-600 hover:bg-sand-200/50 transition-colors"
-          title="设置"
-        >
-          <Settings2 size={16} />
-        </button>
         {user && (
           <button
             onClick={onLogout}
@@ -212,7 +199,8 @@ export default function Sidebar({
   }
 
   return (
-    <div className="w-60 bg-sand-50 border-r border-sand-200/60 flex flex-col shrink-0 animate-slide-right">
+    <div className="flex shrink-0" style={{ width: sidebarWidth }}>
+    <div className="flex-1 min-w-0 bg-sand-50 border-r border-sand-200/60 flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-3">
         <span className="text-[0.8125rem] font-semibold text-sand-700 tracking-tight pl-1">
@@ -239,6 +227,9 @@ export default function Sidebar({
           新建会话
         </button>
       </div>
+
+      {/* Mode selector */}
+      <ModeSelector onChange={onModeChange} />
 
       {/* Session list */}
       <div className="flex-1 overflow-y-auto px-2 py-1">
@@ -291,58 +282,6 @@ export default function Sidebar({
         })}
       </div>
 
-      {/* Bottom: system prompt + knowledge base + skills + memory + settings */}
-      <div className="px-2.5 py-2.5 border-t border-sand-200/60">
-        <button
-          onClick={onOpenSystemPrompt}
-          className="flex items-center gap-2 w-full px-3 py-2 text-[0.8125rem] rounded-xl
-                     text-sand-500 hover:bg-white/60 hover:text-sand-700 transition-colors"
-        >
-          <ScrollText size={14} className="opacity-60" />
-          系统提示词
-        </button>
-        <button
-          onClick={onOpenKB}
-          className="flex items-center gap-2 w-full px-3 py-2 text-[0.8125rem] rounded-xl
-                     text-sand-500 hover:bg-white/60 hover:text-sand-700 transition-colors"
-        >
-          <Database size={14} className="opacity-60" />
-          知识库
-        </button>
-        <button
-          onClick={onOpenSkills}
-          className="flex items-center gap-2 w-full px-3 py-2 text-[0.8125rem] rounded-xl
-                     text-sand-500 hover:bg-white/60 hover:text-sand-700 transition-colors"
-        >
-          <Wand2 size={14} className="opacity-60" />
-          技能
-        </button>
-        <button
-          onClick={onOpenMemory}
-          className="flex items-center gap-2 w-full px-3 py-2 text-[0.8125rem] rounded-xl
-                     text-sand-500 hover:bg-white/60 hover:text-sand-700 transition-colors"
-        >
-          <BookOpen size={14} className="opacity-60" />
-          记忆
-        </button>
-        <button
-          onClick={onOpenWorkspace}
-          className="flex items-center gap-2 w-full px-3 py-2 text-[0.8125rem] rounded-xl
-                     text-sand-500 hover:bg-white/60 hover:text-sand-700 transition-colors"
-        >
-          <FolderOpen size={14} className="opacity-60" />
-          工作区
-        </button>
-        <button
-          onClick={onOpenSettings}
-          className="flex items-center gap-2 w-full px-3 py-2 text-[0.8125rem] rounded-xl
-                     text-sand-500 hover:bg-white/60 hover:text-sand-700 transition-colors"
-        >
-          <Settings2 size={14} className="opacity-60" />
-          设置
-        </button>
-      </div>
-
       {/* User info */}
       {user && (
         <div className="px-3 py-2.5 border-t border-sand-200/60">
@@ -350,15 +289,21 @@ export default function Sidebar({
             <User size={13} className="text-sand-400 shrink-0" />
             <span className="text-[0.8125rem] text-sand-700 font-medium truncate">{user.username}</span>
           </div>
-          <div className="text-[0.6875rem] text-sand-400 ml-5 mb-2">
-            余额: {((user.quota - user.used_quota) / 500000).toFixed(1)}万 tokens
+          <div className="flex items-center gap-1 text-[0.6875rem] text-sand-400 ml-5 mb-2">
+            <span>余额: ${(user.quota / 500000).toFixed(2)}</span>
+            {onRefreshBalance && (
+              <button
+                onClick={onRefreshBalance}
+                className="p-0.5 rounded text-sand-300 hover:text-sand-600 transition-colors"
+                title="刷新余额"
+              >
+                <RefreshCw size={10} />
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-2 ml-5">
             <button
-              onClick={() => {
-                const url = (localStorage.getItem("econ-agent-new-api-url") || "http://43.128.44.82:3000").replace(/\/v1$/, "");
-                window.open(`${url}/topup`, "_blank");
-              }}
+              onClick={onTopup}
               className="flex items-center gap-1 text-[0.6875rem] text-[#c8956c] hover:text-[#b8855c] transition-colors"
             >
               <ExternalLink size={10} />
@@ -400,6 +345,12 @@ export default function Sidebar({
           </button>
         </div>
       )}
+    </div>
+    {/* 右侧拖拽手柄 */}
+    <div
+      onMouseDown={handleDragStart}
+      className="w-1 cursor-col-resize hover:bg-[#c8956c]/20 active:bg-[#c8956c]/30 transition-colors shrink-0"
+    />
     </div>
   );
 }

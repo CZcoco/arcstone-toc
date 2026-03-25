@@ -11,6 +11,7 @@ import threading
 import logging
 import os
 import re
+import time
 import shutil
 from typing import Optional
 from datetime import datetime, timezone
@@ -25,14 +26,13 @@ from src.api.stream import stream_to_sse, _extract_text
 from src.agent.prompts import ECON_SYSTEM_PROMPT
 from src.settings import SETTINGS_SCHEMA, get_settings_for_api, update_settings, load_settings, save_settings
 from src.api.auth import quick_start as auth_quick_start, get_user_info as auth_get_user_info, auto_login, AuthError
+from src.api.modes import get_modes, get_active_mode_id, set_active_mode, get_active_mode_prompt
 from src.agent.main import DATA_DIR
 
 
 def _optional_import_error_message(feature: str, error: Exception) -> str:
     missing_name = getattr(error, "name", "") or "依赖"
     return f"{feature}功能当前不可用：缺少扩展依赖 {missing_name}。请先完成相关扩展依赖安装。"
-
-_kb_logger = logging.getLogger(__name__ + ".kb")
 
 _INDEX_KEY = "/index.md"
 _INDEX_TEMPLATE = """\
@@ -229,52 +229,109 @@ def auth_start(req: QuickStartRequest, request: Request):
         return JSONResponse(status_code=e.status_code, content={"ok": False, "message": e.message})
 
 
+# 用户信息缓存（避免每次都请求 New API）
+_user_cache: dict = {}  # {"data": {...}, "ts": float}
+_USER_CACHE_TTL = 60  # 缓存 60 秒
+
+
+def _save_auth_result(result: dict):
+    """登录/重新登录后保存凭据到环境变量和 settings。"""
+    os.environ["ECON_USER_TOKEN"] = result["token"]
+    os.environ["ECON_SESSION_COOKIE"] = result["session_cookie"]
+    os.environ["ECON_USER_ID"] = str(result["user_id"])
+    settings = load_settings(DATA_DIR)
+    save_settings(DATA_DIR, {**settings,
+        "ECON_USER_TOKEN": result["token"],
+        "ECON_SESSION_COOKIE": result["session_cookie"],
+        "ECON_USER_ID": str(result["user_id"]),
+    })
+    # 更新缓存
+    _user_cache["data"] = result["user"]
+    _user_cache["ts"] = time.time()
+
+
 @router.get("/auth/user")
-def auth_user_info():
-    """获取当前用户信息。session 过期时自动用 saved credentials 重新登录。"""
+def auth_user_info(refresh: bool = False):
+    """获取当前用户信息。带 ?refresh=true 时跳过缓存。"""
+    # 检查缓存
+    if not refresh and "data" in _user_cache:
+        if time.time() - _user_cache.get("ts", 0) < _USER_CACHE_TTL:
+            return {"ok": True, "user": _user_cache["data"]}
+
     session_cookie = os.environ.get("ECON_SESSION_COOKIE", "")
     user_id = os.environ.get("ECON_USER_ID", "")
 
     if not session_cookie or not user_id:
-        # 尝试用保存的凭证自动登录
         settings = load_settings(DATA_DIR)
         username = settings.get("ECON_USERNAME", "")
         password = settings.get("ECON_PASSWORD", "")
         if username and password:
             result = auto_login(username, password)
             if result:
-                os.environ["ECON_USER_TOKEN"] = result["token"]
-                os.environ["ECON_SESSION_COOKIE"] = result["session_cookie"]
-                os.environ["ECON_USER_ID"] = str(result["user_id"])
-                save_settings(DATA_DIR, {**settings,
-                    "ECON_USER_TOKEN": result["token"],
-                    "ECON_SESSION_COOKIE": result["session_cookie"],
-                    "ECON_USER_ID": str(result["user_id"]),
-                })
+                _save_auth_result(result)
                 return {"ok": True, "user": result["user"]}
         return JSONResponse(status_code=401, content={"ok": False, "message": "未登录"})
 
     try:
         user = auth_get_user_info(session_cookie, int(user_id))
+        _user_cache["data"] = user
+        _user_cache["ts"] = time.time()
         return {"ok": True, "user": user}
     except AuthError:
-        # session 过期，尝试自动重新登录
+        # session 过期，尝试重新登录
         settings = load_settings(DATA_DIR)
         username = settings.get("ECON_USERNAME", "")
         password = settings.get("ECON_PASSWORD", "")
         if username and password:
             result = auto_login(username, password)
             if result:
-                os.environ["ECON_USER_TOKEN"] = result["token"]
-                os.environ["ECON_SESSION_COOKIE"] = result["session_cookie"]
-                os.environ["ECON_USER_ID"] = str(result["user_id"])
-                save_settings(DATA_DIR, {**settings,
-                    "ECON_USER_TOKEN": result["token"],
-                    "ECON_SESSION_COOKIE": result["session_cookie"],
-                    "ECON_USER_ID": str(result["user_id"]),
-                })
+                _save_auth_result(result)
                 return {"ok": True, "user": result["user"]}
+        _user_cache.clear()
         return JSONResponse(status_code=401, content={"ok": False, "message": "会话已过期"})
+    except Exception:
+        # 网络错误等，返回缓存数据（如果有的话）
+        if "data" in _user_cache:
+            return {"ok": True, "user": _user_cache["data"]}
+        return JSONResponse(status_code=503, content={"ok": False, "message": "服务暂时不可用，请稍后重试"})
+
+
+@router.get("/auth/topup-context")
+def auth_topup_context():
+    """Return topup URL + session cookie for Electron in-app topup window.
+
+    NOTE: This endpoint exposes the session cookie in the response body.
+    This is safe because the API only listens on localhost (127.0.0.1).
+    Do NOT expose this endpoint on a public network.
+    """
+    session_cookie = os.environ.get("ECON_SESSION_COOKIE", "")
+    user_id = os.environ.get("ECON_USER_ID", "")
+
+    # 确保 session 有效，过期则自动重新登录
+    if session_cookie and user_id:
+        try:
+            auth_get_user_info(session_cookie, int(user_id))
+        except Exception:
+            # session 过期，尝试重新登录拿新 cookie
+            settings = load_settings(DATA_DIR)
+            username = settings.get("ECON_USERNAME", "")
+            password = settings.get("ECON_PASSWORD", "")
+            if username and password:
+                result = auto_login(username, password)
+                if result:
+                    _save_auth_result(result)
+                    session_cookie = result["session_cookie"]
+                else:
+                    session_cookie = ""
+            else:
+                session_cookie = ""
+
+    if not session_cookie:
+        return JSONResponse(status_code=401, content={"ok": False, "message": "未登录"})
+
+    base = os.environ.get("NEW_API_URL", "http://43.128.44.82:3000/v1")
+    base = base.removesuffix("/v1").removesuffix("/")
+    return {"ok": True, "url": f"{base}/topup", "session_cookie": session_cookie, "domain": base}
 
 
 @router.post("/auth/logout")
@@ -1103,149 +1160,42 @@ def upload_excel(file: UploadFile = File(...)):
     return {"ok": True, "name": file.filename, "path": save_path}
 
 
-
-_ALLOWED_KB_EXTS = {
-    ".pdf", ".docx", ".doc", ".txt", ".md",
-    ".pptx", ".ppt", ".xlsx", ".xls", ".html",
-    ".png", ".jpg", ".jpeg", ".bmp", ".gif",
-}
-
-# 内存中的上传任务状态
-_kb_jobs: dict[str, dict] = {}
+# --- Modes (云端模式) ---
 
 
-class KBDeleteRequest(BaseModel):
-    document_ids: list[str]
-    index_id: Optional[str] = None
+@router.get("/modes")
+def modes_list():
+    """返回可用模式列表（不含 system_prompt 全文，只返回展示信息）。"""
+    modes = get_modes()
+    active_id = get_active_mode_id()
+    # 前端只需要展示信息，不需要 system_prompt 全文
+    safe_modes = [
+        {k: v for k, v in m.items() if k != "system_prompt"}
+        for m in modes
+    ]
+    return {"modes": safe_modes, "active_id": active_id}
 
 
-class KBRagConfigRequest(BaseModel):
-    configs: list[dict]  # [{index_id, name, description}]
+class ModeSelectRequest(BaseModel):
+    mode_id: str
 
 
-@router.get("/kb/list")
-def kb_list(
-    request: Request,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    index_id: Optional[str] = Query(None),
-):
-    kb_mgr = getattr(request.app.state, "kb_manager", None)
-    if kb_mgr is None:
-        return JSONResponse(status_code=503, content={"error": "知识库未配置"})
-    return kb_mgr.list_documents(index_id=index_id, page=page, page_size=page_size)
-
-
-@router.post("/kb/upload")
-def kb_upload(
-    request: Request,
-    file: UploadFile = File(...),
-    chunk_size: Optional[int] = Form(None),
-    overlap_size: Optional[int] = Form(None),
-    index_id: Optional[str] = Form(None),
-):
-    kb_mgr = getattr(request.app.state, "kb_manager", None)
-    if kb_mgr is None:
-        return JSONResponse(status_code=503, content={"error": "知识库未配置"})
-
-    filename = file.filename or "unnamed"
-    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    if ext not in _ALLOWED_KB_EXTS:
-        return JSONResponse(
-            status_code=400,
-            content={"error": f"不支持的文件格式 {ext}，支持：{', '.join(sorted(_ALLOWED_KB_EXTS))}"},
-        )
-
-    file_bytes = file.file.read()
-    if not file_bytes:
-        return JSONResponse(status_code=400, content={"error": "文件为空"})
-
-    job_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
-    _kb_jobs[job_id] = {
-        "job_id": job_id,
-        "filename": filename,
-        "status": "uploading",
-        "progress": "正在上传...",
-        "error": None,
-        "file_id": None,
-        "created_at": now,
-    }
-
-    def _background_upload():
-        job = _kb_jobs[job_id]
-        try:
-            result = kb_mgr.upload_file(file_bytes, filename)
-            fid = result["file_id"]
-            job["file_id"] = fid
-
-            job["status"] = "parsing"
-            job["progress"] = "正在解析文件..."
-            parse_status = kb_mgr.poll_file_parse(fid)
-            if parse_status != "PARSE_SUCCESS":
-                job["status"] = "failed"
-                job["error"] = f"文件解析失败: {parse_status}"
-                return
-
-            job["status"] = "indexing"
-            job["progress"] = "正在建立索引..."
-            idx_job_id = kb_mgr.submit_to_index(
-                [fid],
-                index_id=index_id,
-                chunk_size=chunk_size,
-                overlap_size=overlap_size,
-            )
-            idx_result = kb_mgr.poll_index_job(idx_job_id, index_id=index_id)
-            if idx_result["status"] != "COMPLETED":
-                job["status"] = "failed"
-                err_msgs = [
-                    f"{d['doc_name']}: {d['message']}"
-                    for d in idx_result.get("documents", [])
-                    if d.get("message")
-                ]
-                job["error"] = "索引失败" + (": " + "; ".join(err_msgs) if err_msgs else "")
-                return
-
-            job["status"] = "completed"
-            job["progress"] = "完成"
-        except Exception as e:
-            _kb_logger.exception("KB upload failed for %s", filename)
-            job["status"] = "failed"
-            job["error"] = str(e)
-
-    t = threading.Thread(target=_background_upload, daemon=True)
-    t.start()
-
-    return {"job_id": job_id, "filename": filename, "status": "uploading"}
-
-
-@router.get("/kb/upload/status")
-def kb_upload_status(job_id: str = Query(...)):
-    job = _kb_jobs.get(job_id)
-    if job is None:
-        return JSONResponse(status_code=404, content={"error": "任务不存在"})
-    return job
-
-
-@router.delete("/kb/delete")
-def kb_delete(req: KBDeleteRequest, request: Request):
-    kb_mgr = getattr(request.app.state, "kb_manager", None)
-    if kb_mgr is None:
-        return JSONResponse(status_code=503, content={"error": "知识库未配置"})
-    kb_mgr.delete_documents(req.document_ids, index_id=req.index_id)
-    return {"ok": True}
-
-
-@router.get("/kb/rag/config")
-def kb_rag_config_get():
-    # 知识库配置已迁移到服务端 RAG 代理
-    return {"configs": []}
-
-
-@router.post("/kb/rag/config")
-def kb_rag_config_set(req: KBRagConfigRequest):
-    # 知识库配置已迁移到服务端 RAG 代理
-    return {"ok": True}
+@router.post("/modes/select")
+def modes_select(req: ModeSelectRequest, request: Request):
+    """切换当前模式。"""
+    mode = set_active_mode(req.mode_id)
+    if mode is None:
+        return JSONResponse(status_code=404, content={"error": f"模式 '{req.mode_id}' 不存在"})
+    # 设置系统提示词
+    manager = request.app.state.agent_manager
+    prompt = mode.get("system_prompt")
+    if req.mode_id == "default":
+        manager.set_system_prompt(None)  # 使用内置默认
+    elif prompt:
+        manager.set_system_prompt(prompt)
+    else:
+        manager.set_system_prompt(None)  # 模式没有自定义 prompt，用默认
+    return {"ok": True, "active_id": req.mode_id}
 
 
 # --- Settings ---
@@ -1534,13 +1484,18 @@ def workspace_set(req: WorkspaceSetRequest, request: Request):
 @router.post("/workspace/pick")
 def workspace_pick(request: Request, thread_id: str | None = Query(None)):
     """弹出系统文件夹选择器（tkinter 子进程），选中后自动设为工作区。"""
-    # 用 PowerShell 原生文件夹选择器，不依赖 tkinter（打包后嵌入式 Python 没有 tkinter）
+    # 用 Windows 现代文件夹选择器（CommonOpenFileDialog 风格，大窗口）
     ps_script = (
-        "Add-Type -AssemblyName System.Windows.Forms; "
-        "$d = New-Object System.Windows.Forms.FolderBrowserDialog; "
-        "$d.Description = '选择工作区目录'; "
-        "$d.ShowNewFolderButton = $true; "
-        "if ($d.ShowDialog() -eq 'OK') { Write-Output $d.SelectedPath }"
+        'Add-Type -AssemblyName System.Windows.Forms; '
+        '$d = New-Object System.Windows.Forms.OpenFileDialog; '
+        "$d.Title = '选择工作区目录'; "
+        '$d.CheckFileExists = $false; '
+        '$d.CheckPathExists = $true; '
+        "$d.FileName = '选择此文件夹'; "
+        '$d.ValidateNames = $false; '
+        'if ($d.ShowDialog() -eq "OK") { '
+        '  Write-Output ([System.IO.Path]::GetDirectoryName($d.FileName)) '
+        '}'
     )
     try:
         result = subprocess.run(
@@ -1646,3 +1601,29 @@ def workspace_delete_file(file_path: str, request: Request):
         return JSONResponse(status_code=404, content={"error": "文件不存在"})
     os.remove(target)
     return {"ok": True}
+
+
+class WorkspaceRenameRequest(BaseModel):
+    old_path: str
+    new_name: str
+
+
+@router.post("/workspace/rename")
+def workspace_rename_file(req: WorkspaceRenameRequest, request: Request):
+    """重命名工作区内某个文件"""
+    manager = request.app.state.agent_manager
+    workspace_dir = manager._workspace_dir
+    old_full = os.path.normpath(os.path.join(workspace_dir, req.old_path))
+    if not old_full.startswith(os.path.normpath(workspace_dir)):
+        return JSONResponse(status_code=400, content={"error": "非法路径"})
+    if not os.path.isfile(old_full):
+        return JSONResponse(status_code=404, content={"error": "文件不存在"})
+    parent = os.path.dirname(old_full)
+    new_full = os.path.join(parent, req.new_name)
+    if not new_full.startswith(os.path.normpath(workspace_dir)):
+        return JSONResponse(status_code=400, content={"error": "非法路径"})
+    if os.path.exists(new_full):
+        return JSONResponse(status_code=409, content={"error": "目标文件已存在"})
+    os.rename(old_full, new_full)
+    new_rel = os.path.relpath(new_full, workspace_dir).replace("\\", "/")
+    return {"ok": True, "new_path": new_rel}

@@ -36,6 +36,7 @@ export default {
         "fade-in": "fadeIn 0.3s ease-out",
         "slide-up": "slideUp 0.35s ease-out",
         "slide-right": "slideRight 0.25s ease-out",
+        "slide-left": "slideLeft 0.25s ease-out",
         "pulse-soft": "pulseSoft 2s ease-in-out infinite",
       },
       keyframes: {
@@ -49,6 +50,10 @@ export default {
         },
         slideRight: {
           "0%": { opacity: "0", transform: "translateX(-8px)" },
+          "100%": { opacity: "1", transform: "translateX(0)" },
+        },
+        slideLeft: {
+          "0%": { opacity: "0", transform: "translateX(8px)" },
           "100%": { opacity: "1", transform: "translateX(0)" },
         },
         pulseSoft: {

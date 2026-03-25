@@ -2,7 +2,7 @@
 PDF 解析模块
 
 支持两种解析方式：
-1. MinerU API（云端，质量更好，需要 API key）
+1. MinerU API（云端，质量更好，key 从服务端池获取）
 2. pdfplumber（本地，兜底方案）
 
 MinerU key 过期或不可用时自动降级到 pdfplumber。
@@ -15,6 +15,8 @@ import logging
 
 import requests
 import pdfplumber
+
+from src.api.key_pool import get_key
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,7 @@ def parse_pdf(file_bytes: bytes, filename: str) -> dict:
     优先 MinerU API（失败重试 1 次），再降级 pdfplumber。
     pdfplumber 提取为空时返回 warning 提示用户。
     """
-    token = os.environ.get("MINERU_API_KEY", "")
+    token = get_key("mineru")
     if token:
         last_err = None
         for attempt in range(2):
@@ -138,7 +140,7 @@ def parse_pdfs_batch(files: list[tuple[bytes, str]]) -> list[dict]:
     if len(files) == 1:
         return [parse_pdf(files[0][0], files[0][1])]
 
-    token = os.environ.get("MINERU_API_KEY", "")
+    token = get_key("mineru")
     if not token:
         # 无 API key，全部走本地解析
         results = []

@@ -15,13 +15,7 @@ from deepagents.backends.filesystem import FilesystemBackend
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from src.agent.config import get_llm
-from src.agent.prompts import (
-    ECON_SYSTEM_PROMPT,
-    TOPIC_AGENT_PROMPT,
-    LITERATURE_AGENT_PROMPT,
-    EMPIRICAL_AGENT_PROMPT,
-    WRITING_AGENT_PROMPT,
-)
+from src.agent.prompts import ECON_SYSTEM_PROMPT
 from src.store import SqliteStore
 from src.tools.rag import bailian_rag
 from src.tools.search import internet_search, fetch_website
@@ -29,6 +23,7 @@ from src.tools.code_runner import run_python
 from src.tools.pdf_reader import read_pdf
 from src.tools.read_image import read_image
 from src.tools.memory_search import memory_search
+from src.tools.image_gen import generate_image
 
 _INSTALL_ROOT_ENV = os.environ.get("ARCSTONE_ECON_INSTALL_ROOT")
 if _INSTALL_ROOT_ENV:
@@ -86,32 +81,7 @@ def create_econ_agent(
             read_pdf,
             read_image,
             memory_search,
-        ],
-        subagents=[
-            {
-                "name": "topic-agent",
-                "description": "当用户提出一个研究方向/领域和当前研究想法和兴趣后，负责结合可获得的数据（公开和用户提供）和文献，策划出切实可行论文选题。",
-                "system_prompt": TOPIC_AGENT_PROMPT,
-                "tools": [internet_search, fetch_website, bailian_rag, run_python],
-            },
-            {
-                "name": "literature-agent",
-                "description": "用于搜索和整理学术文献、生成参考文献列表。调用时机：选题确定后，需要文献综述时；或需要验证某篇引用是否真实存在时。",
-                "system_prompt": LITERATURE_AGENT_PROMPT,
-                "tools": [internet_search, fetch_website, bailian_rag, run_python],
-            },
-            {
-                "name": "empirical-agent",
-                "description": "用于实证分析：主要使用python进行数据清洗，stata skill执行回归、生成表格和图表。调用时机：数据和选题都确定后，需要执行计量经济学分析时。",
-                "system_prompt": EMPIRICAL_AGENT_PROMPT,
-                "tools": [run_python, read_image],
-            },
-            {
-                "name": "writing-agent",
-                "description": "用于撰写论文章节和生成 Word 文档。调用时机：文献综述和实证结果都已就绪，需要整合写作时。",
-                "system_prompt": WRITING_AGENT_PROMPT,
-                "tools": [run_python, read_image, read_pdf],
-            },
+            generate_image,
         ],
         system_prompt=system_prompt or ECON_SYSTEM_PROMPT,
         store=store,

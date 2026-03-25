@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, session, Menu } = require("electron");
+const { app, BrowserWindow, dialog, session, Menu, ipcMain } = require("electron");
 const { spawn, execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
@@ -12,6 +12,7 @@ const PACKAGED_BACKEND_HEALTH_RETRIES = 5 * 60;
 
 let pyProcess = null;
 let loadingWin = null;
+let topupWin = null;
 let actualPort = DEFAULT_PORT;
 
 function getPythonPath() {
@@ -190,6 +191,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, "preload.cjs"),
     },
   });
 
@@ -234,6 +236,51 @@ app.whenReady().then(async () => {
     return;
   }
   createWindow();
+
+  // --- Topup window IPC ---
+  ipcMain.handle("open-topup", async (_event, url, sessionCookie, domain) => {
+    if (topupWin && !topupWin.isDestroyed()) {
+      topupWin.focus();
+      return;
+    }
+
+    // Set session cookie on the New API domain
+    try {
+      await session.defaultSession.cookies.set({
+        url: domain,
+        name: "session",
+        value: sessionCookie,
+        path: "/",
+        httpOnly: true,
+      });
+    } catch (err) {
+      console.error("[topup] Failed to set session cookie:", err);
+    }
+
+    topupWin = new BrowserWindow({
+      width: 500,
+      height: 700,
+      title: "充值",
+      autoHideMenuBar: true,
+      resizable: true,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    });
+    topupWin.removeMenu();
+    topupWin.loadURL(url);
+
+    topupWin.on("closed", () => {
+      topupWin = null;
+      // Notify all renderer windows to refresh balance
+      BrowserWindow.getAllWindows().forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send("topup-closed");
+        }
+      });
+    });
+  });
 });
 
 app.on("before-quit", () => {

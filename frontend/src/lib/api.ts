@@ -1,4 +1,4 @@
-import type { Session, MemoryItem, KBDocument, KBConfig } from "@/types";
+import type { Session, MemoryItem } from "@/types";
 
 export interface ModelInfo {
   id: string;
@@ -151,50 +151,33 @@ export function renameMemory(oldKey: string, newName: string) {
   });
 }
 
-// --- Knowledge Base (百炼) ---
 
-export function listKBDocuments(page = 1, pageSize = 20, indexId?: string) {
-  let url = `${BASE_URL}/kb/list?page=${page}&page_size=${pageSize}`;
-  if (indexId) url += `&index_id=${encodeURIComponent(indexId)}`;
-  return request<{ documents: KBDocument[]; total_count: number }>(url);
+// --- Modes (云端模式) ---
+
+export interface TemplateCard {
+  title: string;
+  description: string;
+  icon: string;
+  message: string;
 }
 
-export function uploadToKB(file: File, indexId?: string, chunkSize?: number, overlapSize?: number) {
-  const form = new FormData();
-  form.append("file", file);
-  if (indexId) form.append("index_id", indexId);
-  if (chunkSize != null) form.append("chunk_size", String(chunkSize));
-  if (overlapSize != null) form.append("overlap_size", String(overlapSize));
-  return request<{ job_id: string; filename: string; status: string }>(
-    `${BASE_URL}/kb/upload`,
-    { method: "POST", body: form }
-  );
+export interface ModeInfo {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  templates?: TemplateCard[];
 }
 
-export function getKBUploadStatus(jobId: string) {
-  return request<{
-    job_id: string; filename: string; status: string;
-    progress: string; error: string | null; file_id: string | null;
-  }>(`${BASE_URL}/kb/upload/status?job_id=${jobId}`);
+export function listModes() {
+  return request<{ modes: ModeInfo[]; active_id: string }>(`${BASE_URL}/modes`);
 }
 
-export function deleteKBDocuments(documentIds: string[], indexId?: string) {
-  return request<{ ok: boolean }>(`${BASE_URL}/kb/delete`, {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ document_ids: documentIds, index_id: indexId || null }),
-  });
-}
-
-export function getKBRagConfig() {
-  return request<{ configs: KBConfig[] }>(`${BASE_URL}/kb/rag/config`);
-}
-
-export function setKBRagConfig(configs: KBConfig[]) {
-  return request<{ ok: boolean }>(`${BASE_URL}/kb/rag/config`, {
+export function selectMode(modeId: string) {
+  return request<{ ok: boolean; active_id: string }>(`${BASE_URL}/modes/select`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ configs }),
+    body: JSON.stringify({ mode_id: modeId }),
   });
 }
 
@@ -406,6 +389,14 @@ export function revealInExplorer(path?: string) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path: path ?? null }),
+  });
+}
+
+export function renameWorkspaceFile(oldPath: string, newName: string) {
+  return request<{ ok: boolean; new_path: string }>(`${BASE_URL}/workspace/rename`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ old_path: oldPath, new_name: newName }),
   });
 }
 

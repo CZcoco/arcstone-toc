@@ -1,0 +1,5 @@
+fastapi==0.115.0
+uvicorn==0.30.6
+alibabacloud_bailian20231229>=1.2.0
+alibabacloud_tea_openapi>=0.3.0
+alibabacloud_tea_util>=0.3.0

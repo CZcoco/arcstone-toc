@@ -6,8 +6,20 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { Pencil, Check, X, FileSpreadsheet, FileText, Image, FileCode } from "lucide-react";
 import type { Message } from "@/types";
+import { BASE_URL } from "@/lib/api";
 import ToolCallCard from "./ToolCallCard";
 import ThinkingIndicator from "./ThinkingIndicator";
+
+/** 只渲染 /workspace/ 路径的图片，其他路径返回空（不渲染） */
+function resolveWorkspaceImage(src: string | undefined): string | null {
+  if (!src) return null;
+  const cleaned = src.replace(/\\/g, "");
+  if (cleaned.startsWith("/workspace/")) {
+    const rel = cleaned.slice("/workspace/".length);
+    return `${BASE_URL}/workspace/raw/${rel.split("/").map(encodeURIComponent).join("/")}`;
+  }
+  return null;
+}
 
 interface ChatMessageProps {
   message: Message;
@@ -174,7 +186,25 @@ function ChatMessage({ message, onResend, isStreaming: globalStreaming }: ChatMe
         if (seg.type === "text" && seg.content) {
           return (
             <div key={`text-${i}`} className="prose">
-              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+                components={{
+                  img: ({ src, alt }) => {
+                    const resolved = resolveWorkspaceImage(src);
+                    if (!resolved) return <span>{alt || ""}</span>;
+                    return (
+                      <img
+                        src={resolved}
+                        alt={alt || ""}
+                        className="rounded-xl max-w-full shadow-[0_2px_8px_rgba(0,0,0,0.08)] my-3 cursor-pointer"
+                        loading="lazy"
+                        onClick={() => window.open(resolved, "_blank")}
+                      />
+                    );
+                  },
+                }}
+              >
                 {seg.content}
               </ReactMarkdown>
             </div>
@@ -186,7 +216,24 @@ function ChatMessage({ message, onResend, isStreaming: globalStreaming }: ChatMe
       {/* 没有 segments 但有 content（fallback，兼容老数据） */}
       {!hasSegments && message.content && (
         <div className="prose">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              img: ({ src, alt }) => {
+                    const resolved = resolveWorkspaceImage(src);
+                    if (!resolved) return <span>{alt || ""}</span>;
+                    return (
+                      <img
+                        src={resolved}
+                        alt={alt || ""}
+                        className="rounded-xl max-w-full shadow-[0_2px_8px_rgba(0,0,0,0.08)] my-3 cursor-pointer"
+                        loading="lazy"
+                        onClick={() => window.open(resolved, "_blank")}
+                      />
+                    );
+                  },
+            }}
+          >
             {message.content}
           </ReactMarkdown>
         </div>

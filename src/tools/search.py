@@ -1,30 +1,25 @@
 """
-联网搜索工具 - 使用 Tavily API
+联网搜索工具 - 使用 Tavily API（key 从服务端池获取）
 """
-import os
 import threading
 from langchain_core.tools import tool
 
-_client = None
+from src.api.key_pool import get_key
+
 _client_lock = threading.Lock()
 
 
 def _get_client():
-    """线程安全地获取 TavilyClient 单例"""
-    global _client
-    if _client is None:
-        with _client_lock:
-            if _client is None:
-                try:
-                    from tavily import TavilyClient
-                except ImportError as e:
-                    raise RuntimeError("缺少 tavily-python 依赖") from e
+    """获取 TavilyClient，使用 key 池轮询的 key"""
+    try:
+        from tavily import TavilyClient
+    except ImportError as e:
+        raise RuntimeError("缺少 tavily-python 依赖") from e
 
-                api_key = os.environ.get("TAVILY_API_KEY")
-                if not api_key:
-                    raise ValueError("缺少 TAVILY_API_KEY")
-                _client = TavilyClient(api_key=api_key)
-    return _client
+    api_key = get_key("tavily")
+    if not api_key:
+        raise ValueError("缺少 Tavily API Key（服务端 key 池为空，且未设置 TAVILY_API_KEY 环境变量）")
+    return TavilyClient(api_key=api_key)
 
 
 @tool

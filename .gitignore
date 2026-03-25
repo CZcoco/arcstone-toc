@@ -56,3 +56,9 @@ nul
 *.pdf
 "skills.zip"
 skills.zip
+skills.tar.gz
+skills.tar.gz.b64
+skills-version.json
+
+# 云端同步版本标记（运行时生成）
+skills/.cloud-version

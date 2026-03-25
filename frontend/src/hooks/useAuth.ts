@@ -29,7 +29,7 @@ export function useAuth() {
   }, []);
 
   const refreshBalance = useCallback(async () => {
-    const info = await getUserInfo();
+    const info = await getUserInfo(true);
     if (info) setUser(info);
   }, []);
 
